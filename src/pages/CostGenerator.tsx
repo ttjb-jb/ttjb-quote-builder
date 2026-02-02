@@ -17,6 +17,7 @@ import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 import PageWrapper from "../components/PageWrapper";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useSnackbar } from "../context/SnackbarContext";
 
 import type { Filament, Printer, Project } from "../types";
@@ -35,11 +36,17 @@ function num(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
+
 function isValidId(id: string) {
   return typeof id === "string" && id.trim().length > 0;
 }
+
 function fmt2(n: number) {
   return `£${Number(n ?? 0).toFixed(2)}`;
+}
+
+function normalizeName(s: string) {
+  return (s ?? "").trim().toLowerCase();
 }
 
 type FilamentLine = {
@@ -60,9 +67,7 @@ export default function CostGenerator() {
   const [printerId, setPrinterId] = useState("");
 
   // Up to 16 filament lines
-  const [filamentLines, setFilamentLines] = useState<FilamentLine[]>([
-    { filamentId: "", grams: 0 }
-  ]);
+  const [filamentLines, setFilamentLines] = useState<FilamentLine[]>([{ filamentId: "", grams: 0 }]);
 
   const [printHours, setPrintHours] = useState<number>(0);
   const [assemblyHours, setAssemblyHours] = useState<number>(0);
@@ -90,6 +95,10 @@ export default function CostGenerator() {
   // ---- edit mode ----
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingQuoteNumber, setEditingQuoteNumber] = useState<string | null>(null);
+
+  // ---- overwrite prompt ----
+  const [confirmOverwriteOpen, setConfirmOverwriteOpen] = useState(false);
+  const [pendingOverwriteProject, setPendingOverwriteProject] = useState<Project | null>(null);
 
   useEffect(() => {
     setPrinters(loadPrinters());
@@ -130,9 +139,7 @@ export default function CostGenerator() {
               .map((x) => ({ filamentId: String((x as any).filamentId ?? ""), grams: num((x as any).grams) }))
           );
         } else {
-          setFilamentLines([
-            { filamentId: String((p as any).filamentId ?? ""), grams: num((p as any).filamentGrams) }
-          ]);
+          setFilamentLines([{ filamentId: String((p as any).filamentId ?? ""), grams: num((p as any).filamentGrams) }]);
         }
 
         // restore saved costs
@@ -205,7 +212,11 @@ export default function CostGenerator() {
       notify("Please add at least one filament with grams", "warning");
       return false;
     }
-    const invalid = filamentLines.some((l) => (isValidId(l.filamentId) && num(l.grams) < 0) || (!isValidId(l.filamentId) && num(l.grams) > 0));
+    const invalid = filamentLines.some(
+      (l) =>
+        (isValidId(l.filamentId) && num(l.grams) < 0) ||
+        (!isValidId(l.filamentId) && num(l.grams) > 0)
+    );
     if (invalid) {
       notify("Each filament row must have both filament and grams", "warning");
       return false;
@@ -276,6 +287,10 @@ export default function CostGenerator() {
     setServiceAndHandlingCost(0);
     setTotalCost(0);
 
+    // clear overwrite prompt state (just in case)
+    setConfirmOverwriteOpen(false);
+    setPendingOverwriteProject(null);
+
     notify("Cleared", "info");
   }
 
@@ -297,9 +312,7 @@ export default function CostGenerator() {
 
     const projects = loadProjects();
 
-    const servicePercentUsed = serviceOverrideEnabled
-      ? num(servicePercentOverride)
-      : num(defaultServicePercent);
+    const servicePercentUsed = serviceOverrideEnabled ? num(servicePercentOverride) : num(defaultServicePercent);
 
     const compactLines = filamentLines
       .filter((l) => isValidId(l.filamentId) && num(l.grams) > 0)
@@ -334,10 +347,8 @@ export default function CostGenerator() {
       totalCost: num(totalCost)
     };
 
-    let updated: Project[];
-
     if (editingProjectId) {
-      updated = (projects as any[]).map((p: any) => {
+      const updated = (projects as any[]).map((p: any) => {
         if (p.id !== editingProjectId) return p;
         return {
           ...p,
@@ -350,18 +361,34 @@ export default function CostGenerator() {
 
       saveProjects(updated as any);
       notify(`Updated ${editingQuoteNumber ?? "project"}`, "success");
-    } else {
-      const p: Project = {
-        id: crypto.randomUUID(),
-        quoteNumber: getNextQuoteNumber(),
-        createdAt: new Date().toISOString(),
-        ...base
-      } as any;
-
-      updated = [p as any, ...(projects as any[])];
-      saveProjects(updated as any);
-      notify(`Saved ${(p as any).quoteNumber}`, "success");
+      return;
     }
+
+    // ---- NEW PROJECT SAVE (with duplicate-name protection + overwrite prompt) ----
+    const nameKey = normalizeName(projectName);
+    const dupIndex = (projects as any[]).findIndex((p: any) => normalizeName(p?.name) === nameKey);
+
+    // Candidate project WITHOUT quote number yet (so we don't burn quote numbers on duplicates)
+    const candidate: any = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      ...base
+    };
+
+    if (dupIndex !== -1) {
+      // Duplicate name found → prompt overwrite
+      setPendingOverwriteProject(candidate);
+      setConfirmOverwriteOpen(true);
+      notify("Project name already exists — overwrite or rename", "warning");
+      return;
+    }
+
+    // Unique → safe to assign quote number
+    candidate.quoteNumber = getNextQuoteNumber();
+
+    const updated = [candidate as any, ...(projects as any[])];
+    saveProjects(updated as any);
+    notify(`Saved ${candidate.quoteNumber}`, "success");
   }
 
   function setLine(i: number, patch: Partial<FilamentLine>) {
@@ -418,13 +445,7 @@ export default function CostGenerator() {
               fullWidth
             />
 
-            <TextField
-              select
-              label="Printer"
-              value={printerId}
-              onChange={(e) => setPrinterId(e.target.value)}
-              fullWidth
-            >
+            <TextField select label="Printer" value={printerId} onChange={(e) => setPrinterId(e.target.value)} fullWidth>
               <MenuItem value="">Select printer</MenuItem>
               {(printers as any[]).map((p: any) => (
                 <MenuItem key={p.id} value={p.id}>
@@ -540,10 +561,7 @@ export default function CostGenerator() {
             <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
               <FormControlLabel
                 control={
-                  <Switch
-                    checked={serviceOverrideEnabled}
-                    onChange={(e) => setServiceOverrideEnabled(e.target.checked)}
-                  />
+                  <Switch checked={serviceOverrideEnabled} onChange={(e) => setServiceOverrideEnabled(e.target.checked)} />
                 }
                 label="Override service %"
               />
@@ -555,9 +573,7 @@ export default function CostGenerator() {
                 onChange={(e) => setServicePercentOverride(num(e.target.value))}
                 disabled={!serviceOverrideEnabled}
                 helperText={
-                  serviceOverrideEnabled
-                    ? "Overrides the default from Settings"
-                    : `Default from Settings: ${defaultServicePercent}%`
+                  serviceOverrideEnabled ? "Overrides the default from Settings" : `Default from Settings: ${defaultServicePercent}%`
                 }
                 fullWidth
               />
@@ -616,6 +632,54 @@ export default function CostGenerator() {
           </Stack>
         </Paper>
       </Box>
+
+      {/* Overwrite confirm */}
+      <ConfirmDialog
+        open={confirmOverwriteOpen}
+        title="Project name already exists"
+        description={`A project named "${pendingOverwriteProject ? String((pendingOverwriteProject as any).name ?? "") : ""}" already exists. Overwrite it?`}
+        confirmText="Overwrite"
+        cancelText="Cancel"
+        destructive
+        onClose={() => {
+          setConfirmOverwriteOpen(false);
+          setPendingOverwriteProject(null);
+        }}
+        onConfirm={() => {
+          if (!pendingOverwriteProject) return;
+
+          const nameKey = normalizeName((pendingOverwriteProject as any).name);
+          const current = loadProjects();
+
+          const idx = (current as any[]).findIndex((p: any) => normalizeName(p?.name) === nameKey);
+
+          if (idx === -1) {
+            // Somehow no longer exists; treat as new save
+            const created: any = { ...(pendingOverwriteProject as any), quoteNumber: getNextQuoteNumber() };
+            saveProjects([created as any, ...(current as any[])] as any);
+            notify(`Saved ${created.quoteNumber}`, "success");
+          } else {
+            const existing: any = (current as any[])[idx];
+
+            const overwritten: any = {
+              ...existing, // keep existing id/quoteNumber/createdAt
+              ...(pendingOverwriteProject as any),
+              id: existing.id,
+              quoteNumber: existing.quoteNumber,
+              createdAt: existing.createdAt ?? existing.createdAt
+            };
+
+            const next = [...(current as any[])];
+            next[idx] = overwritten;
+
+            saveProjects(next as any);
+            notify(`Overwritten ${existing.quoteNumber ?? "project"}`, "success");
+          }
+
+          setConfirmOverwriteOpen(false);
+          setPendingOverwriteProject(null);
+        }}
+      />
     </PageWrapper>
   );
 }

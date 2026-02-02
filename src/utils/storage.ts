@@ -112,6 +112,111 @@ export function loadProjects(): Project[] {
 export function saveProjects(projects: Project[]) {
   save(KEY_PROJECTS, projects ?? []);
 }
+/** -----------------------------
+ *  Projects - duplicate handling
+ * ------------------------------*/
+
+// Normalize project names for comparisons (trim + case-insensitive)
+function normalizeProjectName(name: string) {
+  return (name ?? "").trim().toLowerCase();
+}
+
+// Try to read a "project name" from your Project shape.
+// Adjust this if your Project type uses a specific field name.
+function getProjectName(p: Project): string {
+  return String((p as any).projectName ?? (p as any).name ?? "");
+}
+
+// Try to read an ID from your Project shape (used to allow edits without duplicate warnings).
+function getProjectId(p: Project): string {
+  const id = (p as any).id ?? (p as any).projectId ?? "";
+  return id ? String(id) : "";
+}
+
+// Try to read quoteNumber if present (your code uses quoteNumber in syncQuoteCounterFromProjects)
+function getQuoteNumber(p: Project): string {
+  return String((p as any).quoteNumber ?? "");
+}
+
+// Writes quoteNumber back if you want to preserve it on overwrite
+function withQuoteNumber(p: Project, quoteNumber: string): Project {
+  return { ...(p as any), quoteNumber } as Project;
+}
+
+export type SaveProjectResult =
+  | { status: "created"; projects: Project[] }
+  | { status: "overwritten"; projects: Project[]; overwrittenIndex: number }
+  | { status: "duplicate"; existing: Project; existingIndex: number };
+
+/**
+ * Save a project while enforcing unique project names.
+ *
+ * - If a duplicate name exists:
+ *   - policy "reject": return {status:"duplicate"} (UI can prompt)
+ *   - policy "overwrite": replace the existing project with the new one
+ *
+ * - excludeId lets you save edits to an existing project without counting it as a duplicate.
+ */
+export function saveProjectUnique(
+  project: Project,
+  opts?: {
+    policy?: "reject" | "overwrite";
+    excludeId?: string; // pass current project's id when editing
+    preserveQuoteNumberOnOverwrite?: boolean; // default true
+  }
+): SaveProjectResult {
+  const policy = opts?.policy ?? "reject";
+  const preserveQuote = opts?.preserveQuoteNumberOnOverwrite ?? true;
+
+  const nameKey = normalizeProjectName(getProjectName(project));
+  const projects = loadProjects();
+
+  // If no name, treat as invalid duplicate (you can change this behavior if you want)
+  if (!nameKey) {
+    // You can throw instead if you prefer
+    return { status: "duplicate", existing: project, existingIndex: -1 };
+  }
+
+  const excludeId = (opts?.excludeId ?? "").trim();
+
+  const existingIndex = projects.findIndex((p) => {
+    const sameName = normalizeProjectName(getProjectName(p)) === nameKey;
+    if (!sameName) return false;
+
+    if (!excludeId) return true;
+
+    const pid = getProjectId(p);
+    return pid !== excludeId; // duplicate only if it's a different project
+  });
+
+  if (existingIndex === -1) {
+    const next = [...projects, project];
+    saveProjects(next);
+    return { status: "created", projects: next };
+  }
+
+  const existing = projects[existingIndex];
+
+  if (policy === "reject") {
+    return { status: "duplicate", existing, existingIndex };
+  }
+
+  // Overwrite policy
+  let replacement = project;
+
+  // Preserve quote number by default so repeated "save" doesn't keep bumping counters
+  // (UI should ideally also avoid calling getNextQuoteNumber on overwrite)
+  if (preserveQuote) {
+    const existingQ = getQuoteNumber(existing);
+    if (existingQ) replacement = withQuoteNumber(replacement, existingQ);
+  }
+
+  const next = [...projects];
+  next[existingIndex] = replacement;
+  saveProjects(next);
+
+  return { status: "overwritten", projects: next, overwrittenIndex: existingIndex };
+}
 
 /** -----------------------------
  *  Quote counter

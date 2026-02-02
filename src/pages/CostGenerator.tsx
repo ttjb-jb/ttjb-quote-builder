@@ -1,303 +1,621 @@
-  import {
-    Box,
-    Typography,
-    TextField,
-    MenuItem,
-    Button
-  } from "@mui/material";
-  import { useEffect, useState } from "react";
-  import { v4 as uuid } from "uuid";
+// src/pages/CostGenerator.tsx
+import { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Typography,
+  Paper,
+  Stack,
+  TextField,
+  MenuItem,
+  Button,
+  Divider,
+  Switch,
+  FormControlLabel,
+  IconButton
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 
-  import { Printer, Filament, ProjectFilament, Project } from "../types";
-  import { loadPrinters } from "../utils/printerStorage";
-  import { loadFilaments } from "../utils/filamentStorage";
-  import { loadProjects, saveProjects } from "../utils/projectStorage";
-  //import { useSettings } from "../context/SettingsContext";
+import PageWrapper from "../components/PageWrapper";
+import { useSnackbar } from "../context/SnackbarContext";
 
-  export default function CostGenerator() {
-    //const { settings } = useSettings();
+import type { Filament, Printer, Project } from "../types";
+import {
+  loadPrinters,
+  loadFilaments,
+  loadProjects,
+  saveProjects,
+  loadElectricityCost,
+  loadHourlyRate,
+  loadServiceCharge,
+  getNextQuoteNumber
+} from "../utils/storage";
 
-    const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+function num(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function isValidId(id: string) {
+  return typeof id === "string" && id.trim().length > 0;
+}
+function fmt2(n: number) {
+  return `£${Number(n ?? 0).toFixed(2)}`;
+}
 
-    const [projectName, setProjectName] = useState("");
+type FilamentLine = {
+  filamentId: string;
+  grams: number;
+};
 
-    const [printers, setPrinters] = useState<Printer[]>([]);
-    const [filaments, setFilaments] = useState<Filament[]>([]);
-    const [selectedPrinter, setSelectedPrinter] = useState<Printer | null>(null);
+const MAX_FILAMENT_LINES = 16;
 
-    const [filamentCount, setFilamentCount] = useState(1);
-    const [selectedFilaments, setSelectedFilaments] = useState<ProjectFilament[]>([
-      { filamentId: "", gramsUsedG: 0, costPerKg: 0 }
-    ]);
+export default function CostGenerator() {
+  const { notify } = useSnackbar();
 
-    const [runtimeHours, setRuntimeHours] = useState(0);
-    const [runtimeMinutes, setRuntimeMinutes] = useState(0);
+  const [printers, setPrinters] = useState<Printer[]>([]);
+  const [filaments, setFilaments] = useState<Filament[]>([]);
 
-    const [assemblyHours, setAssemblyHours] = useState(0);
-    const [accessoryCost, setAccessoryCost] = useState(0);
-    const [accessoryNote, setAccessoryNote] = useState("");
+  // ---- form ----
+  const [projectName, setProjectName] = useState("");
+  const [printerId, setPrinterId] = useState("");
 
-    const [result, setResult] = useState<Project | null>(null);
+  // Up to 16 filament lines
+  const [filamentLines, setFilamentLines] = useState<FilamentLine[]>([
+    { filamentId: "", grams: 0 }
+  ]);
 
-    // Load printers and filaments
-    useEffect(() => {
-      setPrinters(loadPrinters());
-      setFilaments(loadFilaments());
-    }, []);
+  const [printHours, setPrintHours] = useState<number>(0);
+  const [assemblyHours, setAssemblyHours] = useState<number>(0);
 
-    // Adjust filament rows when count changes
-    useEffect(() => {
-      setSelectedFilaments(
-        Array.from({ length: filamentCount }, (_, i) =>
-          selectedFilaments[i] ?? {
-            filamentId: "",
-            gramsUsedG: 0,
-            costPerKg: 0
-          }
-        )
-      );
-    }, [filamentCount]);
+  const [accessoryCost, setAccessoryCost] = useState<number>(0);
+  const [notes, setNotes] = useState<string>("");
 
-    // Load project for editing
-    useEffect(() => {
-      const raw = localStorage.getItem("editProject");
-      if (!raw) return;
+  // ---- defaults from Settings ----
+  // electricity stored as pence/kWh (e.g. 34)
+  const [electricityPencePerKwh, setElectricityPencePerKwh] = useState<number>(0);
+  const [hourlyRate, setHourlyRate] = useState<number>(0);
+  const [defaultServicePercent, setDefaultServicePercent] = useState<number>(0);
 
-      const project: Project = JSON.parse(raw);
+  // ---- override service charge ----
+  const [serviceOverrideEnabled, setServiceOverrideEnabled] = useState(false);
+  const [servicePercentOverride, setServicePercentOverride] = useState<number>(0);
 
-      setEditingProjectId(project.id);
-      setProjectName(project.name);
+  // ---- results ----
+  const [electricityCost, setElectricityCost] = useState<number>(0);
+  const [filamentCost, setFilamentCost] = useState<number>(0);
+  const [assemblyCost, setAssemblyCost] = useState<number>(0);
+  const [serviceAndHandlingCost, setServiceAndHandlingCost] = useState<number>(0);
+  const [totalCost, setTotalCost] = useState<number>(0);
 
-      setRuntimeHours(Math.floor(project.runtimeHoursT));
-      setRuntimeMinutes(Math.round((project.runtimeHoursT % 1) * 60));
+  // ---- edit mode ----
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingQuoteNumber, setEditingQuoteNumber] = useState<string | null>(null);
 
-      setAssemblyHours(project.assemblyHoursA);
-      setAccessoryCost(project.accessoryCostM);
-      setAccessoryNote(project.accessoryNote);
+  useEffect(() => {
+    setPrinters(loadPrinters());
+    setFilaments(loadFilaments());
 
-      setSelectedPrinter({
-        id: project.printerId,
-        name: "",
-        powerW: project.printerPowerW
+    const e = loadElectricityCost(); // pence/kWh
+    const h = loadHourlyRate(); // £/hr
+    const sc = loadServiceCharge(); // %
+
+    setElectricityPencePerKwh(num(e));
+    setHourlyRate(num(h));
+    setDefaultServicePercent(num(sc));
+    setServicePercentOverride(num(sc));
+
+    const raw = localStorage.getItem("editProject");
+    if (raw) {
+      try {
+        const p = JSON.parse(raw) as Project;
+
+        setEditingProjectId((p as any).id ?? null);
+        setEditingQuoteNumber((p as any).quoteNumber ?? null);
+
+        setProjectName((p as any).name ?? "");
+        setPrinterId((p as any).printerId ?? "");
+
+        setPrintHours(num((p as any).printHours));
+        setAssemblyHours(num((p as any).assemblyHours));
+
+        setAccessoryCost(num((p as any).accessoryCost));
+        setNotes(String((p as any).notes ?? ""));
+
+        // Prefer filamentLines if present, otherwise fall back to legacy single filament fields
+        const storedLines = (p as any).filamentLines as FilamentLine[] | undefined;
+        if (Array.isArray(storedLines) && storedLines.length) {
+          setFilamentLines(
+            storedLines
+              .slice(0, MAX_FILAMENT_LINES)
+              .map((x) => ({ filamentId: String((x as any).filamentId ?? ""), grams: num((x as any).grams) }))
+          );
+        } else {
+          setFilamentLines([
+            { filamentId: String((p as any).filamentId ?? ""), grams: num((p as any).filamentGrams) }
+          ]);
+        }
+
+        // restore saved costs
+        setElectricityCost(num((p as any).electricityCost));
+        setFilamentCost(num((p as any).filamentCost));
+        setAssemblyCost(num((p as any).assemblyCost));
+        setServiceAndHandlingCost(num((p as any).serviceAndHandlingCost));
+        setTotalCost(num((p as any).totalCost));
+
+        const storedServicePercent =
+          num((p as any).serviceChargePercent) ||
+          num((p as any).serviceChargePercentUsed) ||
+          num((p as any).serviceChargePercentOverride);
+
+        if (storedServicePercent > 0) {
+          setServiceOverrideEnabled(true);
+          setServicePercentOverride(storedServicePercent);
+        } else {
+          setServiceOverrideEnabled(false);
+          setServicePercentOverride(num(sc));
+        }
+
+        notify("Loaded project for editing", "info");
+      } catch {
+        notify("Failed to load edit project data", "error");
+      } finally {
+        localStorage.removeItem("editProject");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notify]);
+
+  const filamentById = useMemo(() => {
+    const map = new Map<string, Filament>();
+    (filaments as any[]).forEach((f) => map.set(String((f as any).id), f as any));
+    return map;
+  }, [filaments]);
+
+  const selectedPrinter = useMemo(() => {
+    return (printers as any[]).find((p) => String((p as any).id) === printerId) ?? null;
+  }, [printers, printerId]);
+
+  function getFilamentCostPerGram(filamentId: string): number {
+    const f = filamentById.get(String(filamentId));
+    if (!f) return 0;
+
+    const cpk = num((f as any).costPerKg);
+    if (cpk > 0) return cpk / 1000;
+
+    const cpg = num((f as any).costPerGram);
+    return cpg;
+  }
+
+  /**
+   * Electricity cost in £:
+   * £ = (powerW/1000) * hours * (pencePerKwh/100)
+   */
+  function computeElectricityCostGBP(hours: number): number {
+    const powerW = num((selectedPrinter as any)?.powerW);
+    if (!powerW || powerW <= 0) return 0;
+
+    const kW = powerW / 1000;
+    const poundsPerKwh = num(electricityPencePerKwh) / 100;
+    return kW * num(hours) * poundsPerKwh;
+  }
+
+  function validateFilamentLines(): boolean {
+    const hasAny = filamentLines.some((l) => isValidId(l.filamentId) && num(l.grams) > 0);
+    if (!hasAny) {
+      notify("Please add at least one filament with grams", "warning");
+      return false;
+    }
+    const invalid = filamentLines.some((l) => (isValidId(l.filamentId) && num(l.grams) < 0) || (!isValidId(l.filamentId) && num(l.grams) > 0));
+    if (invalid) {
+      notify("Each filament row must have both filament and grams", "warning");
+      return false;
+    }
+    return true;
+  }
+
+  function calculate() {
+    if (!projectName.trim()) {
+      notify("Please enter a project name", "warning");
+      return;
+    }
+    if (!isValidId(printerId)) {
+      notify("Please select a printer", "warning");
+      return;
+    }
+    if (!validateFilamentLines()) return;
+
+    const elec = computeElectricityCostGBP(printHours);
+
+    const fil = filamentLines.reduce((sum, line) => {
+      if (!isValidId(line.filamentId)) return sum;
+      const g = num(line.grams);
+      if (g <= 0) return sum;
+      return sum + g * getFilamentCostPerGram(line.filamentId);
+    }, 0);
+
+    const asm = num(assemblyHours) * num(hourlyRate);
+    const accessories = num(accessoryCost);
+
+    const sub = elec + fil + asm + accessories;
+
+    const percent = serviceOverrideEnabled ? num(servicePercentOverride) : num(defaultServicePercent);
+    const svc = sub * (percent / 100);
+
+    const total = sub + svc;
+
+    setElectricityCost(elec);
+    setFilamentCost(fil);
+    setAssemblyCost(asm);
+    setServiceAndHandlingCost(svc);
+    setTotalCost(total);
+
+    notify("Costs calculated", "success");
+  }
+
+  function clearAll() {
+    setEditingProjectId(null);
+    setEditingQuoteNumber(null);
+
+    setProjectName("");
+    setPrinterId("");
+
+    setFilamentLines([{ filamentId: "", grams: 0 }]);
+
+    setPrintHours(0);
+    setAssemblyHours(0);
+
+    setAccessoryCost(0);
+    setNotes("");
+
+    setServiceOverrideEnabled(false);
+    setServicePercentOverride(defaultServicePercent);
+
+    setElectricityCost(0);
+    setFilamentCost(0);
+    setAssemblyCost(0);
+    setServiceAndHandlingCost(0);
+    setTotalCost(0);
+
+    notify("Cleared", "info");
+  }
+
+  function saveQuote() {
+    if (!projectName.trim()) {
+      notify("Please enter a project name", "warning");
+      return;
+    }
+    if (!isValidId(printerId)) {
+      notify("Please select a printer", "warning");
+      return;
+    }
+    if (!validateFilamentLines()) return;
+
+    if (totalCost <= 0) {
+      notify("Please calculate costs before saving", "warning");
+      return;
+    }
+
+    const projects = loadProjects();
+
+    const servicePercentUsed = serviceOverrideEnabled
+      ? num(servicePercentOverride)
+      : num(defaultServicePercent);
+
+    const compactLines = filamentLines
+      .filter((l) => isValidId(l.filamentId) && num(l.grams) > 0)
+      .slice(0, MAX_FILAMENT_LINES)
+      .map((l) => ({ filamentId: String(l.filamentId), grams: num(l.grams) }));
+
+    // legacy compatibility fields (first filament only)
+    const firstLine = compactLines[0] ?? { filamentId: "", grams: 0 };
+
+    const base: any = {
+      name: projectName.trim(),
+      printerId,
+
+      // new multi-line filament input
+      filamentLines: compactLines,
+
+      // legacy single filament fields so older pages/pdf still work
+      filamentId: firstLine.filamentId,
+      filamentGrams: num(firstLine.grams),
+
+      printHours: num(printHours),
+      assemblyHours: num(assemblyHours),
+
+      accessoryCost: num(accessoryCost),
+      notes: String(notes ?? ""),
+
+      electricityCost: num(electricityCost),
+      filamentCost: num(filamentCost),
+      assemblyCost: num(assemblyCost),
+      serviceChargePercent: servicePercentUsed,
+      serviceAndHandlingCost: num(serviceAndHandlingCost),
+      totalCost: num(totalCost)
+    };
+
+    let updated: Project[];
+
+    if (editingProjectId) {
+      updated = (projects as any[]).map((p: any) => {
+        if (p.id !== editingProjectId) return p;
+        return {
+          ...p,
+          ...base,
+          id: p.id,
+          quoteNumber: p.quoteNumber ?? editingQuoteNumber ?? p.quoteNumber,
+          createdAt: p.createdAt ?? new Date().toISOString()
+        };
       });
 
-      setFilamentCount(project.filaments.length);
-      setSelectedFilaments(project.filaments);
+      saveProjects(updated as any);
+      notify(`Updated ${editingQuoteNumber ?? "project"}`, "success");
+    } else {
+      const p: Project = {
+        id: crypto.randomUUID(),
+        quoteNumber: getNextQuoteNumber(),
+        createdAt: new Date().toISOString(),
+        ...base
+      } as any;
 
-      setResult(null);
-
-      localStorage.removeItem("editProject");
-    }, []);
-
-    function calculate() {
-      if (!selectedPrinter || !projectName) return;
-
-      const T = runtimeHours + runtimeMinutes / 60;
-
-      const electricityCost =
-        (selectedPrinter.powerW / 1000) *
-        settings.electricityCostE *
-        T;
-
-      const filamentCost = selectedFilaments.reduce(
-        (sum, f) => sum + (f.costPerKg / 1000) * f.gramsUsedG,
-        0
-      );
-
-      const assemblyCost =
-        assemblyHours * settings.hourlyRateH + accessoryCost;
-
-      const totalCost = electricityCost + filamentCost + assemblyCost;
-
-      const project: Project = {
-        id: editingProjectId ?? uuid(),
-        name: projectName,
-        printerId: selectedPrinter.id,
-        printerPowerW: selectedPrinter.powerW,
-        runtimeHoursT: T,
-        assemblyHoursA: assemblyHours,
-        accessoryCostM: accessoryCost,
-        accessoryNote,
-        electricityCost,
-        filamentCost,
-        assemblyCost,
-        totalCost,
-        filaments: selectedFilaments,
-        createdAt: new Date().toISOString()
-      };
-
-      const projects = loadProjects();
-
-      const updatedProjects = editingProjectId
-        ? projects.map(p => (p.id === editingProjectId ? project : p))
-        : [...projects, project];
-
-      saveProjects(updatedProjects);
-
-      setEditingProjectId(null);
-      setResult(project);
+      updated = [p as any, ...(projects as any[])];
+      saveProjects(updated as any);
+      notify(`Saved ${(p as any).quoteNumber}`, "success");
     }
+  }
 
-    function clearForm() {
-      setEditingProjectId(null);
-      setProjectName("");
-      setSelectedPrinter(null);
-      setFilamentCount(1);
-      setSelectedFilaments([
-        { filamentId: "", gramsUsedG: 0, costPerKg: 0 }
-      ]);
-      setRuntimeHours(0);
-      setRuntimeMinutes(0);
-      setAssemblyHours(0);
-      setAccessoryCost(0);
-      setAccessoryNote("");
-      setResult(null);
-    }
+  function setLine(i: number, patch: Partial<FilamentLine>) {
+    setFilamentLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
 
-    return (
-      <Box sx={{ maxWidth: 800 }}>
-        <Typography variant="h5" gutterBottom>
-          Cost Generator
-        </Typography>
+  function addLine() {
+    setFilamentLines((prev) => {
+      if (prev.length >= MAX_FILAMENT_LINES) {
+        notify(`Maximum ${MAX_FILAMENT_LINES} filament lines`, "info");
+        return prev;
+      }
+      return [...prev, { filamentId: "", grams: 0 }];
+    });
+  }
 
-        <TextField
-          fullWidth
-          label="Project name"
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          sx={{ mb: 2 }}
-        />
+  function removeLine(i: number) {
+    setFilamentLines((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      return next.length ? next : [{ filamentId: "", grams: 0 }];
+    });
+  }
 
-        <TextField
-          select
-          fullWidth
-          label="Printer"
-          value={selectedPrinter?.id ?? ""}
-          onChange={(e) =>
-            setSelectedPrinter(
-              printers.find(p => p.id === e.target.value) ?? null
-            )
-          }
-          sx={{ mb: 2 }}
-        >
-          {printers.map(p => (
-            <MenuItem key={p.id} value={p.id}>
-              {p.name} ({p.powerW} W)
-            </MenuItem>
-          ))}
-        </TextField>
+  return (
+    <PageWrapper title="Cost generator">
+      <Box sx={{ maxWidth: 1000 }}>
+        <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 4 }}>
+          <Stack spacing={2.5}>
+            {/* Header */}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1.5}
+              alignItems={{ xs: "stretch", sm: "center" }}
+              justifyContent="space-between"
+            >
+              <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                {editingProjectId ? `Editing ${editingQuoteNumber ?? ""}` : "New quote"}
+              </Typography>
 
-        <TextField
-          select
-          label="Number of filaments"
-          value={filamentCount}
-          onChange={(e) => setFilamentCount(Number(e.target.value))}
-          sx={{ mb: 2 }}
-        >
-          {Array.from({ length: 16 }, (_, i) => (
-            <MenuItem key={i + 1} value={i + 1}>
-              {i + 1}
-            </MenuItem>
-          ))}
-        </TextField>
+              <Button variant="outlined" onClick={clearAll} sx={{ minHeight: 44 }}>
+                Clear
+              </Button>
+            </Stack>
 
-        {selectedFilaments.map((f, i) => (
-          <Box key={i} sx={{ display: "flex", gap: 2, mb: 2 }}>
+            <Divider />
+
+            {/* Project details */}
+            <Typography sx={{ fontWeight: 900 }}>Project details</Typography>
+
+            <TextField
+              label="Project name"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              fullWidth
+            />
+
             <TextField
               select
-              label={`Filament ${i + 1}`}
-              value={f.filamentId}
-              onChange={(e) => {
-                const filament = filaments.find(fl => fl.id === e.target.value);
-                const copy = [...selectedFilaments];
-                if (filament) {
-                  copy[i] = {
-                    ...copy[i],
-                    filamentId: filament.id,
-                    costPerKg: filament.costPerKg
-                  };
-                  setSelectedFilaments(copy);
-                }
-              }}
+              label="Printer"
+              value={printerId}
+              onChange={(e) => setPrinterId(e.target.value)}
+              fullWidth
             >
-              {filaments.map(fl => (
-                <MenuItem key={fl.id} value={fl.id}>
-                  {fl.name}
+              <MenuItem value="">Select printer</MenuItem>
+              {(printers as any[]).map((p: any) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}
                 </MenuItem>
               ))}
             </TextField>
 
-            <TextField
-              label="Usage (g)"
-              type="number"
-              value={f.gramsUsedG}
-              onChange={(e) => {
-                const copy = [...selectedFilaments];
-                copy[i].gramsUsedG = Number(e.target.value);
-                setSelectedFilaments(copy);
-              }}
-            />
-          </Box>
-        ))}
+            <Divider />
 
-        <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-          <TextField
-            label="Runtime hours"
-            type="number"
-            value={runtimeHours}
-            onChange={(e) => setRuntimeHours(Number(e.target.value))}
-          />
-          <TextField
-            label="Runtime minutes"
-            type="number"
-            value={runtimeMinutes}
-            onChange={(e) => setRuntimeMinutes(Number(e.target.value))}
-          />
-        </Box>
+            {/* Print inputs */}
+            <Typography sx={{ fontWeight: 900 }}>Print inputs</Typography>
 
-        <TextField
-          label="Assembly time"
-          type="number"
-          value={assemblyHours}
-          InputProps={{ endAdornment: <span>hours</span> }}
-          onChange={(e) => setAssemblyHours(Number(e.target.value))}
-          sx={{ mb: 2 }}
-        />
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                type="number"
+                label="Print time (hours)"
+                value={printHours}
+                onChange={(e) => setPrintHours(num(e.target.value))}
+                fullWidth
+              />
+              <TextField
+                type="number"
+                label="Assembly time (hours)"
+                value={assemblyHours}
+                onChange={(e) => setAssemblyHours(num(e.target.value))}
+                fullWidth
+              />
+            </Stack>
 
-        <TextField
-          label="Accessory cost"
-          type="number"
-          value={accessoryCost}
-          InputProps={{ endAdornment: <span>£</span> }}
-          onChange={(e) => setAccessoryCost(Number(e.target.value))}
-          sx={{ mb: 2 }}
-        />
+            <Divider />
 
-        <TextField
-          fullWidth
-          label="Accessory note"
-          value={accessoryNote}
-          onChange={(e) => setAccessoryNote(e.target.value)}
-          sx={{ mb: 3 }}
-        />
+            {/* Filaments (up to 16) */}
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography sx={{ fontWeight: 900 }}>Filaments (up to {MAX_FILAMENT_LINES})</Typography>
 
-        <Box sx={{ display: "flex", gap: 2 }}>
-          <Button variant="contained" onClick={calculate}>
-            Calculate & Save
-          </Button>
+              <Button
+                variant="contained"
+                onClick={addLine}
+                startIcon={<AddIcon />}
+                sx={{ minHeight: 40 }}
+                disabled={filamentLines.length >= MAX_FILAMENT_LINES}
+              >
+                Add filament
+              </Button>
+            </Stack>
 
-          <Button variant="outlined" onClick={clearForm}>
-            Clear
-          </Button>
-        </Box>
+            <Stack spacing={1.5}>
+              {filamentLines.map((line, idx) => (
+                <Paper key={idx} variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
+                    <TextField
+                      select
+                      label={`Filament ${idx + 1}`}
+                      value={line.filamentId}
+                      onChange={(e) => setLine(idx, { filamentId: e.target.value })}
+                      fullWidth
+                    >
+                      <MenuItem value="">Select filament</MenuItem>
+                      {(filaments as any[]).map((f: any) => (
+                        <MenuItem key={f.id} value={f.id}>
+                          {f.name ?? "Filament"}
+                        </MenuItem>
+                      ))}
+                    </TextField>
 
-        {result && (
-          <Box sx={{ mt: 3 }}>
-            <Typography>
-              Total cost: £{result.totalCost.toFixed(2)}
+                    <TextField
+                      type="number"
+                      label="Grams"
+                      value={line.grams}
+                      onChange={(e) => setLine(idx, { grams: num(e.target.value) })}
+                      fullWidth
+                    />
+
+                    <IconButton
+                      onClick={() => removeLine(idx)}
+                      aria-label="Remove filament"
+                      sx={{ alignSelf: { xs: "flex-end", md: "center" } }}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+
+            <Divider />
+
+            {/* Accessories + Notes */}
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+              <TextField
+                type="number"
+                label="Accessory cost (£)"
+                value={accessoryCost}
+                onChange={(e) => setAccessoryCost(num(e.target.value))}
+                fullWidth
+              />
+              <TextField
+                label="Notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                fullWidth
+                multiline
+                minRows={1}
+              />
+            </Stack>
+
+            <Divider />
+
+            {/* Service & handling override */}
+            <Typography sx={{ fontWeight: 900 }}>Service & handling</Typography>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={serviceOverrideEnabled}
+                    onChange={(e) => setServiceOverrideEnabled(e.target.checked)}
+                  />
+                }
+                label="Override service %"
+              />
+
+              <TextField
+                type="number"
+                label="Service charge %"
+                value={serviceOverrideEnabled ? servicePercentOverride : defaultServicePercent}
+                onChange={(e) => setServicePercentOverride(num(e.target.value))}
+                disabled={!serviceOverrideEnabled}
+                helperText={
+                  serviceOverrideEnabled
+                    ? "Overrides the default from Settings"
+                    : `Default from Settings: ${defaultServicePercent}%`
+                }
+                fullWidth
+              />
+            </Stack>
+
+            {/* ACTIONS at bottom */}
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+              <Button variant="contained" onClick={calculate} sx={{ minHeight: 44 }}>
+                Calculate
+              </Button>
+              <Button variant="contained" onClick={saveQuote} sx={{ minHeight: 44 }}>
+                {editingProjectId ? "Save changes" : "Save quote"}
+              </Button>
+            </Stack>
+
+            <Divider />
+
+            {/* Results */}
+            <Typography sx={{ fontWeight: 900 }}>Results</Typography>
+
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+              <Stack spacing={0.75}>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography color="text.secondary">Electricity</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{fmt2(electricityCost)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography color="text.secondary">Filament (all lines)</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{fmt2(filamentCost)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography color="text.secondary">Assembly</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{fmt2(assemblyCost)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography color="text.secondary">Accessories</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{fmt2(accessoryCost)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography color="text.secondary">Service & handling</Typography>
+                  <Typography sx={{ fontWeight: 800 }}>{fmt2(serviceAndHandlingCost)}</Typography>
+                </Stack>
+
+                <Divider sx={{ my: 1 }} />
+
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography sx={{ fontWeight: 900 }}>Total</Typography>
+                  <Typography sx={{ fontWeight: 900 }}>{fmt2(totalCost)}</Typography>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+              Electricity uses printer power (W) × hours × your Settings rate (p/kWh → £).
             </Typography>
-          </Box>
-        )}
+          </Stack>
+        </Paper>
       </Box>
-    );
-  }
+    </PageWrapper>
+  );
+}

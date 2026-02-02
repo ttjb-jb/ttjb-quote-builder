@@ -1,42 +1,46 @@
-import { createContext, useContext, useState } from "react";
-import {
-  loadElectricityCost,
-  loadHourlyRate,
-  saveElectricityCost,
-  saveHourlyRate
-} from "../utils/storage";
+// src/context/SettingsContext.tsx
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { loadElectricityCost, loadHourlyRate, loadServiceCharge } from "../utils/storage";
 
-interface Settings {
-  electricityCost: number;
-  hourlyRate: number;
+export interface SettingsState {
+  electricityCostE: number; // p/kWh
+  hourlyRateH: number; // £/hour
+  serviceChargePercent: number; // %
 }
 
-const SettingsContext = createContext<{
-  settings: Settings;
-  updateSettings: (s: Settings) => void;
-} | null>(null);
+type SettingsContextValue = {
+  settings: SettingsState;
+  refreshSettings: () => void;
+};
 
-/*export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<Settings>({
-    electricityCost: loadElectricityCost(),
-    hourlyRate: loadHourlyRate()
+const SettingsContext = createContext<SettingsContextValue | undefined>(undefined);
+
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const [settings, setSettings] = useState<SettingsState>({
+    electricityCostE: 0,
+    hourlyRateH: 0,
+    serviceChargePercent: 0
   });
 
-  function updateSettings(newSettings: Settings) {
-    setSettings(newSettings);
-    saveElectricityCost(newSettings.electricityCost);
-    saveHourlyRate(newSettings.hourlyRate);
-  }
+  const refreshSettings = () => {
+    setSettings({
+      electricityCostE: loadElectricityCost(),
+      hourlyRateH: loadHourlyRate(),
+      serviceChargePercent: loadServiceCharge()
+    });
+  };
 
-  return (
-    <SettingsContext.Provider value={{ settings, updateSettings }}>
-      {children}
-    </SettingsContext.Provider>
-  );
-}*/
+  useEffect(() => {
+    refreshSettings();
+  }, []);
 
-/*export function useSettings() {
+  const value = useMemo(() => ({ settings, refreshSettings }), [settings]);
+
+  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
+}
+
+export function useSettings() {
   const ctx = useContext(SettingsContext);
-  if (!ctx) throw new Error("SettingsContext missing");
+  if (!ctx) throw new Error("useSettings must be used inside <SettingsProvider>");
   return ctx;
-}*/
+}

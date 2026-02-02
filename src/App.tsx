@@ -5,6 +5,7 @@ import Filament from "./pages/Filament";
 import CostGenerator from "./pages/CostGenerator";
 import ProjectHistory from "./pages/ProjectHistory";
 import DrawerMenu from "./components/DrawerMenu";
+import Printers from "./pages/Printers";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/filament" element={<Filament />} />
           <Route path="/cost-generator" element={<CostGenerator />} />
           <Route path="/projects" element={<ProjectHistory />} />
+          <Route path="/printers" element={<Printers />} />
         </Routes>
       </DrawerMenu>
     </BrowserRouter>

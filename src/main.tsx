@@ -1,13 +1,35 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { CssBaseline } from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
 
-const root = document.getElementById("root");
-if (!root) throw new Error("Root element not found");
+import App from "./App";
+import { SettingsProvider } from "./context/SettingsContext";
+import { ThemeModeProvider, useThemeMode } from "./context/ThemeModeContext";
+import { SnackbarProvider } from "./context/SnackbarContext";
+import { buildTheme } from "./theme";
+import "./index.css";
 
-ReactDOM.createRoot(root).render(
+function ThemedApp() {
+  const { resolvedMode } = useThemeMode();
+  const theme = React.useMemo(() => buildTheme(resolvedMode), [resolvedMode]);
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <SnackbarProvider>
+        <SettingsProvider>
+          <App />
+        </SettingsProvider>
+      </SnackbarProvider>
+    </ThemeProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <div style={{ padding: 40, fontSize: 24 }}>
-      ✅ MAIN.TSX IS RUNNING
-    </div>
+    <ThemeModeProvider>
+      <ThemedApp />
+    </ThemeModeProvider>
   </React.StrictMode>
 );

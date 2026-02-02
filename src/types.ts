@@ -10,10 +10,6 @@ export interface Filament {
   costPerKg: number;
 }
 
-export interface Settings {
-  electricityCostE: number; // p/kWh
-  hourlyRateH: number; // £/hour
-}
 export interface ProjectFilament {
   filamentId: string;
   gramsUsedG: number;
@@ -22,6 +18,10 @@ export interface ProjectFilament {
 
 export interface Project {
   id: string;
+
+  // ✅ NEW
+  quoteNumber: string; // e.g. "Q-0001"
+
   name: string;
 
   printerId: string;
@@ -36,24 +36,13 @@ export interface Project {
   electricityCost: number;
   filamentCost: number;
   assemblyCost: number;
+
+  // Service & handling
+  serviceChargePercent: number;
+  serviceChargeAmount: number;
+
   totalCost: number;
 
   filaments: ProjectFilament[];
-  createdAt: string;
+  createdAt: string; // ISO string
 }
-export interface Project {
-  id: string;
-  name: string;
-
-  electricityCost: number;
-  filamentCost: number;
-  assemblyCost: number;
-
-  totalCost: number;
-
-  serviceChargePercent: number; // ✅ NEW
-
-  accessoryNote?: string;
-  createdAt: number;
-}
-

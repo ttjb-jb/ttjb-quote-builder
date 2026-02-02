@@ -1,0 +1,28 @@
+/* src/index.css */
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden; /* <- kills sideways scroll app-wide */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Prevent common offenders from forcing horizontal scroll */
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+pre,
+code {
+  max-width: 100%;
+  overflow-x: auto;
+}

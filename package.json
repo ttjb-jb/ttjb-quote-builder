@@ -1,12 +1,13 @@
 {
   "name": "react-typescript",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "description": "React TypeScript on Replit, using Vite bundler",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000 --strictPort",
+    "dev": "vite --host 0.0.0.0 --port 5174",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 5173"
+    "preview": "vite preview --host 0.0.0.0"
   },
   "keywords": [],
   "author": "",
@@ -26,7 +27,10 @@
     "@mui/icons-material": "^7.3.7",
     "@mui/material": "^7.3.7",
     "@react-pdf/renderer": "^4.3.2",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
     "react-router-dom": "^7.12.0",
+    "react-typescript": "file:",
     "recharts": "^3.6.0",
     "uuid": "^13.0.0"
   }

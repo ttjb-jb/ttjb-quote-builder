@@ -17,74 +17,74 @@ import { useEffect, useMemo, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 import PageWrapper from "../components/PageWrapper";
-import type { Filament } from "../types";
-import { loadFilaments, saveFilaments } from "../utils/storage";
+import type { Printer } from "../types";
+import { loadPrinters, savePrinters } from "../utils/storage";
 
-export default function FilamentPage() {
-  const [filaments, setFilaments] = useState<Filament[]>([]);
+export default function PrintersPage() {
+  const [printers, setPrinters] = useState<Printer[]>([]);
   const [name, setName] = useState("");
-  const [costPerKg, setCostPerKg] = useState<number>(0);
+  const [powerW, setPowerW] = useState<number>(0);
 
   useEffect(() => {
-    setFilaments(loadFilaments());
+    setPrinters(loadPrinters());
   }, []);
 
   const sorted = useMemo(() => {
-    return [...filaments].sort((a, b) => a.name.localeCompare(b.name));
-  }, [filaments]);
+    return [...printers].sort((a, b) => a.name.localeCompare(b.name));
+  }, [printers]);
 
-  function addFilament() {
+  function addPrinter() {
     const trimmed = name.trim();
-    if (!trimmed || costPerKg <= 0) return;
+    if (!trimmed || powerW <= 0) return;
 
-    const next: Filament[] = [
-      ...filaments,
-      { id: uuid(), name: trimmed, costPerKg }
+    const next: Printer[] = [
+      ...printers,
+      { id: uuid(), name: trimmed, powerW }
     ];
 
-    setFilaments(next);
-    saveFilaments(next);
+    setPrinters(next);
+    savePrinters(next);
 
     setName("");
-    setCostPerKg(0);
+    setPowerW(0);
   }
 
-  function removeFilament(id: string) {
-    const next = filaments.filter((f) => f.id !== id);
-    setFilaments(next);
-    saveFilaments(next);
+  function removePrinter(id: string) {
+    const next = printers.filter((p) => p.id !== id);
+    setPrinters(next);
+    savePrinters(next);
   }
 
   return (
     <PageWrapper>
       <Box sx={{ maxWidth: 900, mx: "auto" }}>
         <Typography variant="h5" gutterBottom>
-          Filaments
+          Printers
         </Typography>
 
         <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Add filament
+            Add printer
           </Typography>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <TextField
-              label="Filament name"
+              label="Printer name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               fullWidth
             />
             <TextField
-              label="Cost (£/kg)"
+              label="Power (W)"
               type="number"
-              value={costPerKg}
-              onChange={(e) => setCostPerKg(Number(e.target.value))}
-              inputProps={{ min: 0, step: 0.01 }}
+              value={powerW}
+              onChange={(e) => setPowerW(Number(e.target.value))}
+              inputProps={{ min: 0, step: 1 }}
               sx={{ width: { xs: "100%", sm: 220 } }}
             />
             <Button
               variant="contained"
-              onClick={addFilament}
+              onClick={addPrinter}
               sx={{ whiteSpace: "nowrap" }}
             >
               Add
@@ -94,14 +94,14 @@ export default function FilamentPage() {
 
         <Paper sx={{ p: 2 }}>
           <Typography sx={{ px: 1, pb: 1 }} color="text.secondary">
-            {sorted.length} filament{sorted.length === 1 ? "" : "s"} configured
+            {sorted.length} printer{sorted.length === 1 ? "" : "s"} configured
           </Typography>
 
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Filament</TableCell>
-                <TableCell align="right">Cost (£/kg)</TableCell>
+                <TableCell>Printer</TableCell>
+                <TableCell align="right">Power (W)</TableCell>
                 <TableCell align="right" width={80}>
                   Actions
                 </TableCell>
@@ -109,14 +109,14 @@ export default function FilamentPage() {
             </TableHead>
 
             <TableBody>
-              {sorted.map((f) => (
-                <TableRow key={f.id} hover>
-                  <TableCell>{f.name}</TableCell>
-                  <TableCell align="right">{f.costPerKg.toFixed(2)}</TableCell>
+              {sorted.map((p) => (
+                <TableRow key={p.id} hover>
+                  <TableCell>{p.name}</TableCell>
+                  <TableCell align="right">{p.powerW}</TableCell>
                   <TableCell align="right">
                     <IconButton
-                      aria-label="delete filament"
-                      onClick={() => removeFilament(f.id)}
+                      aria-label="delete printer"
+                      onClick={() => removePrinter(p.id)}
                     >
                       <DeleteIcon />
                     </IconButton>
@@ -127,7 +127,7 @@ export default function FilamentPage() {
               {sorted.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={3} sx={{ py: 3 }} align="center">
-                    No filaments yet — add your first one above.
+                    No printers yet — add your first one above.
                   </TableCell>
                 </TableRow>
               )}

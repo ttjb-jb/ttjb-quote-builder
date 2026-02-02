@@ -1,46 +1,166 @@
+import { ReactNode, useMemo, useState } from "react";
 import {
+  AppBar,
+  Box,
+  CssBaseline,
+  Divider,
   Drawer,
+  IconButton,
   List,
   ListItemButton,
-  ListItemText
+  ListItemText,
+  Toolbar,
+  Typography,
+  useMediaQuery
 } from "@mui/material";
-import { Link } from "react-router-dom";
-import { ReactNode } from "react";
+import MenuIcon from "@mui/icons-material/Menu";
+import { Link, useLocation } from "react-router-dom";
+import { useTheme } from "@mui/material/styles";
 
-const drawerWidth = 240;
+const drawerWidth = 260;
+
+type NavItem = { label: string; to: string };
 
 export default function DrawerMenu({ children }: { children: ReactNode }) {
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
+  const location = useLocation();
+
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navItems: NavItem[] = useMemo(
+    () => [
+      { label: "Home", to: "/" },
+      { label: "Cost Generator", to: "/cost-generator" },
+      { label: "Project History", to: "/projects" },
+      { label: "Printers", to: "/printers" },
+      { label: "Filament", to: "/filament" },
+      { label: "Settings", to: "/settings" }
+    ],
+    []
+  );
+
+  function toggleMobileDrawer() {
+    setMobileOpen((v) => !v);
+  }
+
+  function closeMobileDrawer() {
+    setMobileOpen(false);
+  }
+
+  const drawerContent = (
+    <Box sx={{ height: "100%" }}>
+      <Toolbar sx={{ px: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
+          TTJB Quote Builder
+        </Typography>
+      </Toolbar>
+      <Divider />
+
+      <List sx={{ px: 1 }}>
+        {navItems.map((item) => {
+          const selected = location.pathname === item.to;
+
+          return (
+            <ListItemButton
+              key={item.to}
+              component={Link}
+              to={item.to}
+              selected={selected}
+              onClick={!isDesktop ? closeMobileDrawer : undefined}
+              sx={{
+                borderRadius: 2,
+                my: 0.5,
+                "&.Mui-selected": {
+                  bgcolor: "action.selected",
+                  "&:hover": { bgcolor: "action.selected" }
+                }
+              }}
+            >
+              <ListItemText
+                primary={item.label}
+                primaryTypographyProps={{ fontWeight: selected ? 800 : 600 }}
+              />
+            </ListItemButton>
+          );
+        })}
+      </List>
+
+      <Box sx={{ flex: 1 }} />
+    </Box>
+  );
+
   return (
-    <div style={{ display: "flex" }}>
-      <Drawer
-        variant="permanent"
+    <Box sx={{ display: "flex" }}>
+      <CssBaseline />
+
+      {/* Top bar only for mobile */}
+      {!isDesktop ? (
+        <AppBar position="fixed" color="default" elevation={0}>
+          <Toolbar>
+            <IconButton
+              edge="start"
+              onClick={toggleMobileDrawer}
+              aria-label="open drawer"
+              sx={{ mr: 2 }}
+            >
+              <MenuIcon />
+            </IconButton>
+
+            <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
+              TTJB Quote Builder
+            </Typography>
+          </Toolbar>
+        </AppBar>
+      ) : null}
+
+      {/* Drawer */}
+      <Box component="nav" sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}>
+        {/* Mobile Drawer */}
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={closeMobileDrawer}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: "block", md: "none" },
+            "& .MuiDrawer-paper": {
+              width: drawerWidth
+            }
+          }}
+        >
+          {drawerContent}
+        </Drawer>
+
+        {/* Desktop Drawer */}
+        <Drawer
+          variant="permanent"
+          open
+          sx={{
+            display: { xs: "none", md: "block" },
+            "& .MuiDrawer-paper": {
+              width: drawerWidth,
+              boxSizing: "border-box"
+            }
+          }}
+        >
+          {drawerContent}
+        </Drawer>
+      </Box>
+
+      {/* Main content */}
+      <Box
+        component="main"
         sx={{
-          width: drawerWidth,
-          "& .MuiDrawer-paper": { width: drawerWidth }
+          flexGrow: 1,
+          width: { md: `calc(100% - ${drawerWidth}px)` },
+          px: { xs: 2, sm: 3 },
+          pb: 4,
+          pt: { xs: 10, md: 3 } // top padding to clear AppBar on mobile
         }}
       >
-        <List>
-          <ListItemButton component={Link} to="/">
-            <ListItemText primary="Landing" />
-          </ListItemButton>
-          <ListItemButton component={Link} to="/settings">
-            <ListItemText primary="Settings" />
-          </ListItemButton>
-          <ListItemButton component={Link} to="/filament">
-            <ListItemText primary="Filament" />
-          </ListItemButton>
-          <ListItemButton component={Link} to="/cost-generator">
-            <ListItemText primary="Cost Generator" />
-          </ListItemButton>
-          <ListItemButton component={Link} to="/projects">
-            <ListItemText primary="Project History" />
-          </ListItemButton>
-        </List>
-      </Drawer>
-
-      <main style={{ marginLeft: drawerWidth, padding: 24 }}>
         {children}
-      </main>
-    </div>
+      </Box>
+    </Box>
   );
 }

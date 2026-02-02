@@ -5,6 +5,7 @@ modules = ["nodejs-20"]
 
 [nix]
 channel = "stable-23_11"
+packages = ["gh"]
 
 [[ports]]
 localPort = 3000

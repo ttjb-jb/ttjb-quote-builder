@@ -33,7 +33,7 @@ import { QuotePdf } from "../pdf/QuotePdf";
 
 import type { Project, Printer } from "../types";
 import { loadProjects, saveProjects, loadPrinters, syncQuoteCounterFromProjects } from "../utils/storage";
-
+import { saveAndShareBlob } from "../utils/deviceDownload";
 type ViewMode = "cards" | "table";
 
 function fmtGBP(n: number | undefined) {

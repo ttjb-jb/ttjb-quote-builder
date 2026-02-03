@@ -192,8 +192,9 @@ export default function ProjectHistory() {
   }
 
   async function downloadZipOfFilteredPdfs() {
-    if (filteredProjects.length === 0) return;
+  if (filteredProjects.length === 0) return;
 
+  try {
     const zip = new JSZip();
 
     for (const p of filteredProjects as any[]) {
@@ -211,10 +212,17 @@ export default function ProjectHistory() {
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
     await saveAndShareBlob("quotes.zip", zipBlob);
-
+  } catch (err) {
+    console.error(err);
+    // if you have snackbar available in this file, use it; otherwise keep console
+    // notify?.("Failed to build ZIP", "error");
   }
+}
 
-  async function exportFilteredCsv() {
+async function exportFilteredCsv() {
+  if (filteredProjects.length === 0) return;
+
+  try {
     const rows = (filteredProjects as any[]).map((p) => ({
       quoteNumber: p.quoteNumber ?? "",
       name: p.name ?? "",
@@ -250,16 +258,22 @@ export default function ProjectHistory() {
           .map((k) => {
             const v = (r as any)[k];
             const s = typeof v === "string" ? v : String(v ?? "");
-            return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+            return s.includes(",") || s.includes('"') || s.includes("\n")
+              ? `"${s.replace(/"/g, '""')}"`
+              : s;
           })
           .join(",")
       )
     ].join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     await saveAndShareBlob("projects.csv", blob);
-
+  } catch (err) {
+    console.error(err);
+    // notify?.("Failed to export CSV", "error");
   }
+}
+
 
   return (
     <PageWrapper title="Project history">

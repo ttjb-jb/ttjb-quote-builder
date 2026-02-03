@@ -59,6 +59,13 @@ function sanitizeFilenamePart(s: string) {
     .replace(/\s+/g, "_")
     .slice(0, 80);
 }
+async function downloadSinglePdf(p: any) {
+  const safeName = (p.name || "project").replace(/[^\w\- ]+/g, "").replace(/\s+/g, "_");
+  const filename = `${p.quoteNumber || "quote"}-${safeName}.pdf`;
+
+  const blob = await pdf(<QuotePdf project={p} />).toBlob();
+  await saveAndShareBlob(filename, blob);
+}
 
 export default function ProjectHistory() {
   const theme = useTheme();
@@ -203,7 +210,8 @@ export default function ProjectHistory() {
     }
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
-    await saveAndShareBlob("quotes.zip", zipBlob, "application/zip");
+    await saveAndShareBlob("quotes.zip", zipBlob);
+
   }
 
   async function exportFilteredCsv() {
@@ -249,7 +257,8 @@ export default function ProjectHistory() {
     ].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
-    await saveAndShareBlob("projects.csv", blob, "text/csv");
+    await saveAndShareBlob("projects.csv", blob);
+
   }
 
   return (
@@ -490,14 +499,13 @@ export default function ProjectHistory() {
                                 size="small"
                                 sx={{ fontWeight: 800, minHeight: 40 }}
                                 onClick={(e) => {
-                                  e.stopPropagation();
-                                  downloadPdfForProject(p).catch(() => {
-                                    // swallow here; deviceDownload should show a toast/alert if you coded it that way
-                                  });
+                                  e.stopPropagation(); // don't select row
+                                  downloadSinglePdf(p);
                                 }}
                               >
                                 Download
                               </Button>
+
                             </TableCell>
                           </TableRow>
                         );
@@ -565,14 +573,11 @@ export default function ProjectHistory() {
                           <Button
                             variant="contained"
                             sx={{ minHeight: 44 }}
-                            onClick={() => {
-                              downloadPdfForProject(p).catch(() => {
-                                // swallow here; deviceDownload should show a toast/alert if you coded it that way
-                              });
-                            }}
+                            onClick={() => downloadSinglePdf(p)}
                           >
                             Download PDF
                           </Button>
+
                         </Stack>
                       </Stack>
                     </CardContent>

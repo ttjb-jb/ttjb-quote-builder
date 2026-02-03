@@ -23,7 +23,7 @@ import {
   Card,
   CardContent
 } from "@mui/material";
-import { PDFDownloadLink, pdf } from "@react-pdf/renderer";
+import { pdf } from "@react-pdf/renderer";
 import JSZip from "jszip";
 
 import PageWrapper from "../components/PageWrapper";
@@ -34,6 +34,7 @@ import { QuotePdf } from "../pdf/QuotePdf";
 import type { Project, Printer } from "../types";
 import { loadProjects, saveProjects, loadPrinters, syncQuoteCounterFromProjects } from "../utils/storage";
 import { saveAndShareBlob } from "../utils/deviceDownload";
+
 type ViewMode = "cards" | "table";
 
 function fmtGBP(n: number | undefined) {
@@ -51,17 +52,12 @@ function safeDate(ts: any) {
   }
 }
 
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadTextFile(filename: string, text: string, mime = "text/plain") {
-  downloadBlob(filename, new Blob([text], { type: mime }));
+function sanitizeFilenamePart(s: string) {
+  return String(s || "")
+    .trim()
+    .replace(/[^\w\- ]+/g, "")
+    .replace(/\s+/g, "_")
+    .slice(0, 80);
 }
 
 export default function ProjectHistory() {
@@ -114,8 +110,14 @@ export default function ProjectHistory() {
     return projects
       .slice()
       .sort((a, b) => {
-        const ta = typeof (a as any).createdAt === "number" ? (a as any).createdAt : Date.parse(String((a as any).createdAt));
-        const tb = typeof (b as any).createdAt === "number" ? (b as any).createdAt : Date.parse(String((b as any).createdAt));
+        const ta =
+          typeof (a as any).createdAt === "number"
+            ? (a as any).createdAt
+            : Date.parse(String((a as any).createdAt));
+        const tb =
+          typeof (b as any).createdAt === "number"
+            ? (b as any).createdAt
+            : Date.parse(String((b as any).createdAt));
         return (tb || 0) - (ta || 0);
       })
       .filter((p) => {
@@ -173,6 +175,15 @@ export default function ProjectHistory() {
     setSelectedProjectId((prev) => (prev && ids.has(prev) ? null : prev));
   }
 
+  async function downloadPdfForProject(p: any) {
+    const safeName = sanitizeFilenamePart(p.name || "project");
+    const quote = sanitizeFilenamePart(p.quoteNumber || "quote");
+    const fileName = `${quote}-${safeName}.pdf`;
+
+    const blob = await pdf(<QuotePdf project={p} />).toBlob();
+    await saveAndShareBlob(fileName, blob, "application/pdf");
+  }
+
   async function downloadZipOfFilteredPdfs() {
     if (filteredProjects.length === 0) return;
 
@@ -181,16 +192,21 @@ export default function ProjectHistory() {
     for (const p of filteredProjects as any[]) {
       const blob = await pdf(<QuotePdf project={p} />).toBlob();
       const ab = await blob.arrayBuffer();
-      const safeName = (p.name || "project").replace(/[^\w\- ]+/g, "").replace(/\s+/g, "_");
-      zip.file(`${p.quoteNumber || "quote"}-${safeName}.pdf`, ab);
-      await new Promise((r) => setTimeout(r, 40));
+
+      const safeName = sanitizeFilenamePart(p.name || "project");
+      const quote = sanitizeFilenamePart(p.quoteNumber || "quote");
+
+      zip.file(`${quote}-${safeName}.pdf`, ab);
+
+      // small delay avoids freezing on low-end devices
+      await new Promise((r) => setTimeout(r, 30));
     }
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
-    downloadBlob("quotes.zip", zipBlob);
+    await saveAndShareBlob("quotes.zip", zipBlob, "application/zip");
   }
 
-  function exportFilteredCsv() {
+  async function exportFilteredCsv() {
     const rows = (filteredProjects as any[]).map((p) => ({
       quoteNumber: p.quoteNumber ?? "",
       name: p.name ?? "",
@@ -232,7 +248,8 @@ export default function ProjectHistory() {
       )
     ].join("\n");
 
-    downloadTextFile("projects.csv", csv, "text/csv");
+    const blob = new Blob([csv], { type: "text/csv" });
+    await saveAndShareBlob("projects.csv", blob, "text/csv");
   }
 
   return (
@@ -468,17 +485,19 @@ export default function ProjectHistory() {
                             </TableCell>
 
                             <TableCell align="right">
-                              <PDFDownloadLink
-                                document={<QuotePdf project={p} />}
-                                fileName={`${p.quoteNumber || "quote"}.pdf`}
-                                style={{ textDecoration: "none" }}
+                              <Button
+                                variant="text"
+                                size="small"
+                                sx={{ fontWeight: 800, minHeight: 40 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  downloadPdfForProject(p).catch(() => {
+                                    // swallow here; deviceDownload should show a toast/alert if you coded it that way
+                                  });
+                                }}
                               >
-                                {({ loading }) => (
-                                  <Button variant="text" size="small" sx={{ fontWeight: 800, minHeight: 40 }}>
-                                    {loading ? "Building…" : "Download"}
-                                  </Button>
-                                )}
-                              </PDFDownloadLink>
+                                Download
+                              </Button>
                             </TableCell>
                           </TableRow>
                         );
@@ -543,17 +562,17 @@ export default function ProjectHistory() {
                             Edit
                           </Button>
 
-                          <PDFDownloadLink
-                            document={<QuotePdf project={p} />}
-                            fileName={`${p.quoteNumber || "quote"}.pdf`}
-                            style={{ textDecoration: "none" }}
+                          <Button
+                            variant="contained"
+                            sx={{ minHeight: 44 }}
+                            onClick={() => {
+                              downloadPdfForProject(p).catch(() => {
+                                // swallow here; deviceDownload should show a toast/alert if you coded it that way
+                              });
+                            }}
                           >
-                            {({ loading }) => (
-                              <Button variant="contained" sx={{ minHeight: 44 }} disabled={loading}>
-                                {loading ? "Building…" : "Download PDF"}
-                              </Button>
-                            )}
-                          </PDFDownloadLink>
+                            Download PDF
+                          </Button>
                         </Stack>
                       </Stack>
                     </CardContent>

@@ -48,13 +48,26 @@ export default function DrawerMenu({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }
 
+  // Use safe-area inset when available (Android/iOS notch/status bar)
+  const SAFE_TOP = "env(safe-area-inset-top, 0px)";
+  const MOBILE_TOOLBAR_BASE = 56; // default MUI mobile toolbar height
+
   const drawerContent = (
     <Box sx={{ height: "100%" }}>
-      <Toolbar sx={{ px: 2 }}>
+      {/* Drawer header: safe-area aware on mobile so it never tucks under the status bar */}
+      <Toolbar
+        sx={{
+          px: 2,
+          pt: { xs: SAFE_TOP, md: 0 },
+          minHeight: { xs: `calc(${MOBILE_TOOLBAR_BASE}px + ${SAFE_TOP})`, md: 64 },
+          alignItems: "center"
+        }}
+      >
         <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
           TTJB Quote Builder
         </Typography>
       </Toolbar>
+
       <Divider />
 
       <List sx={{ px: 1 }}>
@@ -77,10 +90,7 @@ export default function DrawerMenu({ children }: { children: ReactNode }) {
                 }
               }}
             >
-              <ListItemText
-                primary={item.label}
-                primaryTypographyProps={{ fontWeight: selected ? 800 : 600 }}
-              />
+              <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: selected ? 800 : 600 }} />
             </ListItemButton>
           );
         })}
@@ -96,14 +106,22 @@ export default function DrawerMenu({ children }: { children: ReactNode }) {
 
       {/* Top bar only for mobile */}
       {!isDesktop ? (
-        <AppBar position="fixed" color="default" elevation={0}>
-          <Toolbar>
-            <IconButton
-              edge="start"
-              onClick={toggleMobileDrawer}
-              aria-label="open drawer"
-              sx={{ mr: 2 }}
-            >
+        <AppBar
+          position="fixed"
+          color="default"
+          elevation={0}
+          sx={{
+            // Push the bar below the system status bar / notch area
+            pt: SAFE_TOP
+          }}
+        >
+          <Toolbar
+            sx={{
+              minHeight: `calc(${MOBILE_TOOLBAR_BASE}px + ${SAFE_TOP})`,
+              alignItems: "center"
+            }}
+          >
+            <IconButton edge="start" onClick={toggleMobileDrawer} aria-label="open drawer" sx={{ mr: 2 }}>
               <MenuIcon />
             </IconButton>
 
@@ -156,7 +174,12 @@ export default function DrawerMenu({ children }: { children: ReactNode }) {
           width: { md: `calc(100% - ${drawerWidth}px)` },
           px: { xs: 2, sm: 3 },
           pb: 4,
-          pt: { xs: 10, md: 3 } // top padding to clear AppBar on mobile
+
+          // top padding to clear the *safe-area aware* AppBar on mobile
+          pt: {
+            xs: `calc(${MOBILE_TOOLBAR_BASE}px + ${SAFE_TOP} + 16px)`,
+            md: 3
+          }
         }}
       >
         {children}

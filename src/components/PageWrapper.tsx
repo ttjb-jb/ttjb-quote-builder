@@ -2,20 +2,18 @@
 import { Box, Typography, Paper } from "@mui/material";
 import type { ReactNode } from "react";
 
-export default function PageWrapper({
-  title,
-  children
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+export default function PageWrapper({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Box
       sx={{
         width: "100%",
         overflowX: "hidden",
-        px: { xs: 1.5, sm: 2, md: 3 },
-        py: { xs: 2, sm: 3 }
+
+        // Safe-area support for Android/iOS notches/status bars
+        pt: "calc(env(safe-area-inset-top, 0px) + 16px)",
+        pb: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+
+        px: { xs: 1.5, sm: 2, md: 3 }
       }}
     >
       <Box sx={{ maxWidth: 1200, mx: "auto", width: "100%" }}>

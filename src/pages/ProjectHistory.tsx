@@ -620,7 +620,14 @@ export default function ProjectHistory() {
             <Divider sx={{ my: 2 }} />
 
             {selectedProject ? (
-              <Box sx={{ width: "100%", maxWidth: "100%", overflow: "visible" }}>
+              <Box
+                sx={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  overflow: "visible",      // allow labels to render
+                  px: { xs: 1, sm: 0 }      // tiny padding on mobile helps
+                }}
+              >
                 <ProjectCharts project={selectedProject as any} />
               </Box>
             ) : (

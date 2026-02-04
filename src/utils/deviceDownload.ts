@@ -35,7 +35,7 @@ export async function saveAndShareBlob(filename: string, blob: Blob) {
   const result = await Filesystem.writeFile({
     path: filename,
     data: b64,
-    directory: Directory.Documents,
+    directory: Directory.Cache,
     recursive: true
   });
 

@@ -1,4 +1,4 @@
-// src/pages/ProjectHistory.tsx
+// src/pages/ProjectHistory.tsx with changes
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
@@ -52,26 +52,20 @@ function safeDate(ts: any) {
   }
 }
 
-function sanitizeFilenamePart(s: string) {
-  return String(s || "")
-    .trim()
-    .replace(/[^\w\- ]+/g, "")
+function sanitizeFilenamePart(input: string) {
+  const s = String(input ?? "").trim();
+  // keep it simple + safe across platforms
+  return s
+    .replace(/[\/\\?%*:|"<>]/g, "-")
     .replace(/\s+/g, "_")
-    .slice(0, 80);
-}
-async function downloadSinglePdf(p: any) {
-  const safeName = (p.name || "project").replace(/[^\w\- ]+/g, "").replace(/\s+/g, "_");
-  const filename = `${p.quoteNumber || "quote"}-${safeName}.pdf`;
-
-  const blob = await pdf(<QuotePdf project={p} />).toBlob();
-  await saveAndShareBlob(filename, blob);
+    .replace(/_+/g, "_")
+    .slice(0, 80) || "file";
 }
 
 export default function ProjectHistory() {
   const theme = useTheme();
   const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
 
-  // mobile/tablet default to cards, desktop default to table
   const [viewMode, setViewMode] = useState<ViewMode>(() => (isMdDown ? "cards" : "table"));
   const [viewManuallySet, setViewManuallySet] = useState(false);
 
@@ -85,6 +79,8 @@ export default function ProjectHistory() {
 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
+
+  const [busy, setBusy] = useState<null | "pdf" | "zip" | "csv">(null);
 
   const chartRef = useRef<HTMLDivElement | null>(null);
 
@@ -145,8 +141,6 @@ export default function ProjectHistory() {
 
   function selectProject(id: string) {
     setSelectedProjectId(id);
-
-    // scroll to chart without causing horizontal jump
     setTimeout(() => {
       chartRef.current?.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
     }, 50);
@@ -182,104 +176,103 @@ export default function ProjectHistory() {
     setSelectedProjectId((prev) => (prev && ids.has(prev) ? null : prev));
   }
 
-  async function downloadPdfForProject(p: any) {
-    const safeName = sanitizeFilenamePart(p.name || "project");
-    const quote = sanitizeFilenamePart(p.quoteNumber || "quote");
-    const fileName = `${quote}-${safeName}.pdf`;
+  async function downloadSinglePdf(p: any) {
+    if (busy) return;
+    try {
+      setBusy("pdf");
+      const blob = await pdf(<QuotePdf project={p} />).toBlob();
 
-    const blob = await pdf(<QuotePdf project={p} />).toBlob();
-    await saveAndShareBlob(fileName, blob, "application/pdf");
+      const quote = sanitizeFilenamePart(p.quoteNumber || "quote");
+      const name = sanitizeFilenamePart(p.name || "project");
+      await saveAndShareBlob(`${quote}-${name}.pdf`, blob);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function downloadZipOfFilteredPdfs() {
-  if (filteredProjects.length === 0) return;
+    if (filteredProjects.length === 0) return;
+    if (busy) return;
 
-  try {
-    const zip = new JSZip();
+    try {
+      setBusy("zip");
+      const zip = new JSZip();
 
-    for (const p of filteredProjects as any[]) {
-      const blob = await pdf(<QuotePdf project={p} />).toBlob();
-      const ab = await blob.arrayBuffer();
+      for (const p of filteredProjects as any[]) {
+        const blob = await pdf(<QuotePdf project={p} />).toBlob();
+        const ab = await blob.arrayBuffer();
 
-      const safeName = sanitizeFilenamePart(p.name || "project");
-      const quote = sanitizeFilenamePart(p.quoteNumber || "quote");
+        const safeName = sanitizeFilenamePart(p.name || "project");
+        const quote = sanitizeFilenamePart(p.quoteNumber || "quote");
 
-      zip.file(`${quote}-${safeName}.pdf`, ab);
+        zip.file(`${quote}-${safeName}.pdf`, ab);
 
-      // small delay avoids freezing on low-end devices
-      await new Promise((r) => setTimeout(r, 30));
+        // small delay avoids freezing on low-end devices
+        await new Promise((r) => setTimeout(r, 30));
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      await saveAndShareBlob("quotes.zip", zipBlob);
+    } finally {
+      setBusy(null);
     }
-
-    const zipBlob = await zip.generateAsync({ type: "blob" });
-    await saveAndShareBlob("quotes.zip", zipBlob);
-  } catch (err) {
-    console.error(err);
-    // if you have snackbar available in this file, use it; otherwise keep console
-    // notify?.("Failed to build ZIP", "error");
   }
-}
 
-async function exportFilteredCsv() {
-  if (filteredProjects.length === 0) return;
+  async function exportFilteredCsv() {
+    if (busy) return;
 
-  try {
-    const rows = (filteredProjects as any[]).map((p) => ({
-      quoteNumber: p.quoteNumber ?? "",
-      name: p.name ?? "",
-      printer: printerNameById.get(p.printerId) ?? "",
-      createdAt: safeDate(p.createdAt),
-      electricityCost: Number(p.electricityCost ?? 0),
-      filamentCost: Number(p.filamentCost ?? 0),
-      printingCost: Number(p.printingCost ?? 0),
-      assemblyCost: Number(p.assemblyCost ?? 0),
-      accessoryCost: Number(p.accessoryCost ?? 0),
-      serviceAndHandlingCost: Number(p.serviceAndHandlingCost ?? 0),
-      totalCost: Number(p.totalCost ?? 0)
-    }));
+    try {
+      setBusy("csv");
+      const rows = (filteredProjects as any[]).map((p) => ({
+        quoteNumber: p.quoteNumber ?? "",
+        name: p.name ?? "",
+        printer: printerNameById.get(p.printerId) ?? "",
+        createdAt: safeDate(p.createdAt),
+        electricityCost: Number(p.electricityCost ?? 0),
+        filamentCost: Number(p.filamentCost ?? 0),
+        printingCost: Number(p.printingCost ?? 0),
+        assemblyCost: Number(p.assemblyCost ?? 0),
+        accessoryCost: Number(p.accessoryCost ?? 0),
+        serviceAndHandlingCost: Number(p.serviceAndHandlingCost ?? 0),
+        totalCost: Number(p.totalCost ?? 0)
+      }));
 
-    const header = [
-      "quoteNumber",
-      "name",
-      "printer",
-      "createdAt",
-      "electricityCost",
-      "filamentCost",
-      "printingCost",
-      "assemblyCost",
-      "accessoryCost",
-      "serviceAndHandlingCost",
-      "totalCost"
-    ];
+      const header = [
+        "quoteNumber",
+        "name",
+        "printer",
+        "createdAt",
+        "electricityCost",
+        "filamentCost",
+        "printingCost",
+        "assemblyCost",
+        "accessoryCost",
+        "serviceAndHandlingCost",
+        "totalCost"
+      ];
 
-    const csv = [
-      header.join(","),
-      ...rows.map((r) =>
-        header
-          .map((k) => {
-            const v = (r as any)[k];
-            const s = typeof v === "string" ? v : String(v ?? "");
-            return s.includes(",") || s.includes('"') || s.includes("\n")
-              ? `"${s.replace(/"/g, '""')}"`
-              : s;
-          })
-          .join(",")
-      )
-    ].join("\n");
+      const csv = [
+        header.join(","),
+        ...rows.map((r) =>
+          header
+            .map((k) => {
+              const v = (r as any)[k];
+              const s = typeof v === "string" ? v : String(v ?? "");
+              return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+            })
+            .join(",")
+        )
+      ].join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    await saveAndShareBlob("projects.csv", blob);
-  } catch (err) {
-    console.error(err);
-    // notify?.("Failed to export CSV", "error");
+      const blob = new Blob([csv], { type: "text/csv" });
+      await saveAndShareBlob("projects.csv", blob);
+    } finally {
+      setBusy(null);
+    }
   }
-}
-
 
   return (
     <PageWrapper title="Project history">
-      {/* FINAL OUTER WRAPPER CLAMP:
-          This prevents the TABLE from widening the whole page.
-       */}
       <Box
         sx={{
           width: "100%",
@@ -289,9 +282,7 @@ async function exportFilteredCsv() {
           px: { xs: 1.5, sm: 0 }
         }}
       >
-        {/* INNER CONTENT WIDTH */}
         <Box sx={{ width: "100%", maxWidth: 1100, mx: "auto", boxSizing: "border-box", overflowX: "hidden" }}>
-          {/* CONTROLS (must NEVER inherit table width) */}
           <Paper
             sx={{
               p: { xs: 2, sm: 3 },
@@ -344,7 +335,7 @@ async function exportFilteredCsv() {
                   label="Filter by printer"
                   value={printerFilter}
                   onChange={(e) => setPrinterFilter(e.target.value)}
-                  fullWidth={isMdDown}
+                  fullWidth
                   sx={{ minWidth: { xs: "100%", md: 260 }, maxWidth: "100%" }}
                 >
                   <MenuItem value="all">All printers</MenuItem>
@@ -358,7 +349,6 @@ async function exportFilteredCsv() {
 
               <Divider />
 
-              {/* Actions: full width on mobile; wrap and center on larger */}
               <Box sx={{ width: "100%", maxWidth: "100%", overflowX: "clip" }}>
                 <Stack
                   direction={{ xs: "column", sm: "row" }}
@@ -375,45 +365,27 @@ async function exportFilteredCsv() {
                   <Button
                     variant="contained"
                     onClick={downloadZipOfFilteredPdfs}
-                    disabled={filteredProjects.length === 0}
-                    fullWidth={isMdDown}
-                    sx={{
-                      minHeight: 44,
-                      width: { xs: "100%", sm: "auto" },
-                      maxWidth: "100%",
-                      flex: { xs: "1 1 100%", sm: "0 0 auto" }
-                    }}
+                    disabled={filteredProjects.length === 0 || !!busy}
+                    sx={{ minHeight: 44 }}
                   >
-                    Download PDFs (ZIP)
+                    {busy === "zip" ? "Building ZIP…" : "Download PDFs (ZIP)"}
                   </Button>
 
                   <Button
                     variant="contained"
                     onClick={exportFilteredCsv}
-                    disabled={filteredProjects.length === 0}
-                    fullWidth={isMdDown}
-                    sx={{
-                      minHeight: 44,
-                      width: { xs: "100%", sm: "auto" },
-                      maxWidth: "100%",
-                      flex: { xs: "1 1 100%", sm: "0 0 auto" }
-                    }}
+                    disabled={filteredProjects.length === 0 || !!busy}
+                    sx={{ minHeight: 44 }}
                   >
-                    Export CSV (filtered)
+                    {busy === "csv" ? "Building CSV…" : "Export CSV (filtered)"}
                   </Button>
 
                   <Button
                     variant="contained"
                     color="error"
                     onClick={handleBulkDeleteFiltered}
-                    disabled={filteredProjects.length === 0}
-                    fullWidth={isMdDown}
-                    sx={{
-                      minHeight: 44,
-                      width: { xs: "100%", sm: "auto" },
-                      maxWidth: "100%",
-                      flex: { xs: "1 1 100%", sm: "0 0 auto" }
-                    }}
+                    disabled={filteredProjects.length === 0 || !!busy}
+                    sx={{ minHeight: 44 }}
                   >
                     Delete filtered
                   </Button>
@@ -433,19 +405,8 @@ async function exportFilteredCsv() {
             </Stack>
           </Paper>
 
-          {/* LIST */}
           {viewMode === "table" ? (
-            <Paper
-              sx={{
-                borderRadius: 4,
-                mb: 3,
-                overflow: "hidden",
-                width: "100%",
-                maxWidth: "100%",
-                minWidth: 0
-              }}
-            >
-              {/* ONLY THIS BOX SCROLLS HORIZONTALLY */}
+            <Paper sx={{ borderRadius: 4, mb: 3, overflow: "hidden", width: "100%", maxWidth: "100%", minWidth: 0 }}>
               <Box
                 sx={{
                   width: "100%",
@@ -457,13 +418,7 @@ async function exportFilteredCsv() {
                 }}
               >
                 <TableContainer sx={{ width: "100%" }}>
-                  <Table
-                    size="medium"
-                    sx={{
-                      width: "max-content",
-                      minWidth: 980
-                    }}
-                  >
+                  <Table size="medium" sx={{ width: "max-content", minWidth: 980 }}>
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ fontWeight: 800 }}>Quote</TableCell>
@@ -512,14 +467,14 @@ async function exportFilteredCsv() {
                                 variant="text"
                                 size="small"
                                 sx={{ fontWeight: 800, minHeight: 40 }}
+                                disabled={!!busy}
                                 onClick={(e) => {
-                                  e.stopPropagation(); // don't select row
+                                  e.stopPropagation();
                                   downloadSinglePdf(p);
                                 }}
                               >
-                                Download
+                                {busy === "pdf" ? "Building…" : "Download"}
                               </Button>
-
                             </TableCell>
                           </TableRow>
                         );
@@ -587,11 +542,11 @@ async function exportFilteredCsv() {
                           <Button
                             variant="contained"
                             sx={{ minHeight: 44 }}
+                            disabled={!!busy}
                             onClick={() => downloadSinglePdf(p)}
                           >
-                            Download PDF
+                            {busy === "pdf" ? "Building…" : "Download PDF"}
                           </Button>
-
                         </Stack>
                       </Stack>
                     </CardContent>
@@ -607,14 +562,13 @@ async function exportFilteredCsv() {
             </Stack>
           )}
 
-          {/* CHART PANEL */}
           <Paper
             ref={chartRef}
             sx={{
               p: { xs: 2, sm: 3 },
               borderRadius: 4,
               overflowX: "hidden",
-              scrollMarginTop: "84px" // prevents “header gets clipped” feel when scrolling to chart
+              scrollMarginTop: "84px"
             }}
           >
             <Stack
@@ -662,7 +616,6 @@ async function exportFilteredCsv() {
             )}
           </Paper>
 
-          {/* Confirm dialogs */}
           <ConfirmDialog
             open={confirmDeleteOpen}
             title="Delete selected project?"

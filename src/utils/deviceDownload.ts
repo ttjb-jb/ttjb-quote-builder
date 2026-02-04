@@ -1,4 +1,3 @@
-// src/utils/deviceDownload.ts
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -16,38 +15,34 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-function browserDownload(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export async function saveAndShareBlob(filename: string, blob: Blob) {
   const platform = Capacitor.getPlatform();
 
   // Browser fallback
   if (platform === "web") {
-    browserDownload(filename, blob);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
     return;
   }
 
-  // Android/iOS: write to app cache then share
+  // Android/iOS: write to Documents then share as an attached file
   const b64 = await blobToBase64(blob);
 
   const result = await Filesystem.writeFile({
     path: filename,
     data: b64,
-    directory: Directory.Cache,
+    directory: Directory.Documents,
     recursive: true
   });
 
   await Share.share({
     title: filename,
     text: filename,
-    url: result.uri,
+    files: [result.uri],
     dialogTitle: "Save / Share file"
   });
 }

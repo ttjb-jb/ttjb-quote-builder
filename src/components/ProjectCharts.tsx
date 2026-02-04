@@ -24,10 +24,27 @@ function fmtGBP(val: number) {
   return `£${val.toFixed(2)}`;
 }
 
+// Label renderer: place text INSIDE the slice so it can’t be clipped
+function renderValueLabel(props: any) {
+  const { cx, cy, midAngle, innerRadius, outerRadius, value } = props;
+  if (!value || value <= 0) return "";
+
+  const RADIAN = Math.PI / 180;
+  const r = innerRadius + (outerRadius - innerRadius) * 0.6; // 60% into the slice
+  const x = cx + r * Math.cos(-midAngle * RADIAN);
+  const y = cy + r * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={800}>
+      {fmtGBP(Number(value))}
+    </text>
+  );
+}
+
 export default function ProjectCharts({ project }: Props) {
   if (!project) return null;
 
-  const electricity = n((project as any).electricityCost); // printing/electric
+  const electricity = n((project as any).electricityCost);
   const filament = n((project as any).filamentCost);
   const assembly = n((project as any).assemblyCost);
   const service = n((project as any).serviceAndHandlingCost);
@@ -41,6 +58,7 @@ export default function ProjectCharts({ project }: Props) {
     { key: "accessories", name: "Accessories", value: accessories }
   ].filter((d) => d.value > 0);
 
+  const safeData = data.length ? data : [{ key: "empty", name: "No costs", value: 1 }];
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
   return (
@@ -50,8 +68,7 @@ export default function ProjectCharts({ project }: Props) {
         sx={{
           width: "100%",
           minWidth: 0,
-          overflow: "hidden",
-          // keeps chart a nice square without forcing horizontal overflow
+          overflow: "visible",     // <-- IMPORTANT: don’t clip SVG
           aspectRatio: "1 / 1",
           maxHeight: 420
         }}
@@ -59,27 +76,21 @@ export default function ProjectCharts({ project }: Props) {
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
-              data={data.length ? data : [{ key: "empty", name: "No costs", value: 1 }]}
+              data={safeData}
               dataKey="value"
               nameKey="name"
               cx="50%"
               cy="50%"
-              outerRadius="78%"
+              outerRadius="68%"      // <-- smaller so it fits better on phones
               labelLine={false}
-              label={({ value }) => (data.length ? fmtGBP(Number(value)) : "")}
+              label={data.length ? renderValueLabel : undefined}
             >
-              {(data.length ? data : [{ key: "empty", name: "No costs", value: 1 }]).map(
-                (entry, idx) => (
-                  <Cell
-                    key={`${entry.key}-${idx}`}
-                    fill={
-                      entry.key === "empty"
-                        ? "#9CA3AF"
-                        : (COLORS as any)[entry.key] || "#94A3B8"
-                    }
-                  />
-                )
-              )}
+              {safeData.map((entry: any, idx: number) => (
+                <Cell
+                  key={`${entry.key}-${idx}`}
+                  fill={entry.key === "empty" ? "#9CA3AF" : (COLORS as any)[entry.key] || "#94A3B8"}
+                />
+              ))}
             </Pie>
             {data.length ? <Tooltip formatter={(v: any) => fmtGBP(Number(v))} /> : null}
           </PieChart>
@@ -111,9 +122,7 @@ export default function ProjectCharts({ project }: Props) {
               </Typography>
             </Stack>
 
-            <Typography sx={{ fontWeight: 900, flex: "0 0 auto" }}>
-              {fmtGBP(d.value)}
-            </Typography>
+            <Typography sx={{ fontWeight: 900, flex: "0 0 auto" }}>{fmtGBP(d.value)}</Typography>
           </Stack>
         ))}
 

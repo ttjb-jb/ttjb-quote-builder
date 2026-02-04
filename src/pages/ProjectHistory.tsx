@@ -249,7 +249,7 @@ export default function ProjectHistory() {
         )
       ].join("\n");
 
-      const blob = new Blob([csv], { type: "text/csv" });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       await saveAndShareBlob("projects.csv", blob);
     } finally {
       setBusyKey("");

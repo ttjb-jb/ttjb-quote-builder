@@ -124,34 +124,15 @@
       );
     }, [companyLogoDataUrl]);
 
-    function handleExportBackup() {
-      const json = exportBackupJson();
+    async function handleExportBackup() {
+      const json = exportBackupJson(); // <-- full backup (all app data)
       const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "ttjb-quote-builder-backup.json";
-      a.click();
-
-      URL.revokeObjectURL(url);
+      await saveAndShareBlob("ttjb-quote-builder-backup.json", blob);
     }
+
+
 
     // ✅ New: export settings via Capacitor share sheet on mobile, download in browser
-    async function exportSettings() {
-      const payload = {
-        printers: loadPrinters(),
-        filaments: loadFilaments(),
-        projects: loadProjects(),
-        electricityCost: loadElectricityCost(),
-        hourlyRate: loadHourlyRate(),
-        serviceCharge: loadServiceCharge()
-      };
-
-      const json = JSON.stringify(payload, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      await saveAndShareBlob("3d-print-calculator-settings.json", blob);
-    }
 
     function handlePickImportFile() {
       backupInputRef.current?.click();
@@ -349,14 +330,11 @@
                 Export backup
               </Button>
 
-              <Button variant="contained" onClick={exportSettings}>
-                Export settings
-              </Button>
-
               <Button variant="contained" onClick={handlePickImportFile}>
                 Restore from backup
               </Button>
             </Stack>
+
 
             <input
               ref={backupInputRef}

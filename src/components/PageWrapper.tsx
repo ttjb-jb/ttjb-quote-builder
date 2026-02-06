@@ -31,7 +31,6 @@ export default function PageWrapper({
           {title}
         </Typography>
 
-        {/* No Paper wrapper here (avoids double padding + chart clipping). */}
         {children}
       </Box>
     </Box>

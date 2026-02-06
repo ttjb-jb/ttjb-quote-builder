@@ -47,8 +47,12 @@ export default function ProjectCharts({ project }: Props) {
   const chartData = data.length ? data : [{ key: "empty", name: "No costs", value: 1 }];
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
-  // Mobile: reduce radius a bit so labels have room
-  const outerRadius = isSmDown ? "70%" : "78%";
+  // Smaller radius on mobile gives labels more room
+  const outerRadius = isSmDown ? "62%" : "76%";
+
+  const chartMargin = isSmDown
+    ? { top: 18, right: 46, bottom: 18, left: 46 }
+    : { top: 14, right: 22, bottom: 14, left: 22 };
 
   return (
     <Stack spacing={2} sx={{ width: "100%", minWidth: 0 }}>
@@ -57,23 +61,18 @@ export default function ProjectCharts({ project }: Props) {
         sx={{
           width: "100%",
           minWidth: 0,
-          // IMPORTANT: allow labels to be visible
+          // Give ResponsiveContainer a stable height (aspectRatio alone can be flaky)
+          height: { xs: 320, sm: 380 },
+          maxHeight: 420,
+
+          // IMPORTANT: allow labels outside the chart box
           overflow: "visible",
-          // keep it square
-          aspectRatio: "1 / 1",
-          maxHeight: 420
+          "& .recharts-wrapper": { overflow: "visible" },
+          "& svg": { overflow: "visible" }
         }}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart
-            // IMPORTANT: margin creates label “safe area”
-            margin={{
-              top: isSmDown ? 22 : 14,
-              right: isSmDown ? 22 : 14,
-              bottom: isSmDown ? 22 : 14,
-              left: isSmDown ? 22 : 14
-            }}
-          >
+          <PieChart margin={chartMargin}>
             <Pie
               data={chartData}
               dataKey="value"
@@ -82,7 +81,6 @@ export default function ProjectCharts({ project }: Props) {
               cy="50%"
               outerRadius={outerRadius}
               labelLine={false}
-              // keep showing money labels
               label={({ value }) => (data.length ? fmtGBP(Number(value)) : "")}
             >
               {chartData.map((entry: any, idx: number) => (

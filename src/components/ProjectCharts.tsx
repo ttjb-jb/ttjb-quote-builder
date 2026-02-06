@@ -47,22 +47,22 @@ export default function ProjectCharts({ project }: Props) {
   const chartData = data.length ? data : [{ key: "empty", name: "No costs", value: 1 }];
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
-  // Bigger on mobile, but keep room for inside labels
-  const outerRadius = isSmDown ? "82%" : "76%";
+  // Donut sizing
+  const outerRadius = isSmDown ? "84%" : "78%";
+  const innerRadius = isSmDown ? "58%" : "52%";
 
-  // Recharts label renderer with inside placement
+  // Slice label inside (hide tiny slices)
   const renderInsideLabel = (props: any) => {
     if (!data.length) return null;
 
-    const { cx, cy, midAngle, innerRadius = 0, outerRadius, value } = props;
+    const { cx, cy, midAngle, innerRadius: inR = 0, outerRadius: outR, value } = props;
 
     const v = Number(value);
     const pct = total > 0 ? v / total : 0;
-    if (pct < 0.05) return null; // hide tiny slices (<5%)
+    if (pct < 0.06) return null; // hide tiny slices (<6%) to keep donut clean
 
-    // Position text halfway between inner and outer radius
     const RADIAN = Math.PI / 180;
-    const r = (innerRadius + outerRadius) / 2;
+    const r = (inR + outR) / 2;
     const x = cx + r * Math.cos(-midAngle * RADIAN);
     const y = cy + r * Math.sin(-midAngle * RADIAN);
 
@@ -77,6 +77,52 @@ export default function ProjectCharts({ project }: Props) {
       >
         {fmtGBP(v)}
       </text>
+    );
+  };
+
+  // Center label (Total)
+  const renderCenter = () => {
+    // If there's no real data, keep it simple
+    if (!data.length) {
+      return (
+        <>
+          <text
+            x="50%"
+            y="50%"
+            textAnchor="middle"
+            dominantBaseline="central"
+            style={{ fontWeight: 900, fontSize: isSmDown ? 14 : 16 }}
+            fill={theme.palette.text.primary}
+          >
+            No costs
+          </text>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <text
+          x="50%"
+          y="47%"
+          textAnchor="middle"
+          dominantBaseline="central"
+          style={{ fontWeight: 800, fontSize: isSmDown ? 12 : 13 }}
+          fill={theme.palette.text.secondary}
+        >
+          Total
+        </text>
+        <text
+          x="50%"
+          y="55%"
+          textAnchor="middle"
+          dominantBaseline="central"
+          style={{ fontWeight: 950, fontSize: isSmDown ? 18 : 20 }}
+          fill={theme.palette.text.primary}
+        >
+          {fmtGBP(total)}
+        </text>
+      </>
     );
   };
 
@@ -101,8 +147,10 @@ export default function ProjectCharts({ project }: Props) {
               cx="50%"
               cy="50%"
               outerRadius={outerRadius}
-              label={isSmDown ? renderInsideLabel : (e) => fmtGBP(Number(e.value))}
+              innerRadius={innerRadius}
+              label={data.length ? renderInsideLabel : undefined}
               labelLine={false}
+              paddingAngle={data.length ? 1 : 0}
             >
               {chartData.map((entry: any, idx: number) => (
                 <Cell
@@ -116,42 +164,15 @@ export default function ProjectCharts({ project }: Props) {
               ))}
             </Pie>
 
+            {/* Center label */}
+            {renderCenter()}
+
             {data.length ? <Tooltip formatter={(v: any) => fmtGBP(Number(v))} /> : null}
           </PieChart>
         </ResponsiveContainer>
       </Box>
 
-      {/* Key */}
+      {/* Key (no Total row now) */}
       <Stack spacing={1} sx={{ width: "100%", minWidth: 0 }}>
         {data.map((d) => (
           <Stack
-            key={d.key}
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ width: "100%", minWidth: 0 }}
-          >
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Box
-                sx={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  bgcolor: (COLORS as any)[d.key] || "grey.500"
-                }}
-              />
-              <Typography sx={{ fontWeight: 800 }}>{d.name}</Typography>
-            </Stack>
-
-            <Typography sx={{ fontWeight: 900 }}>{fmtGBP(d.value)}</Typography>
-          </Stack>
-        ))}
-
-        <Stack direction="row" justifyContent="space-between" sx={{ pt: 1 }}>
-          <Typography sx={{ fontWeight: 900 }}>Total</Typography>
-          <Typography sx={{ fontWeight: 900 }}>{fmtGBP(total)}</Typography>
-        </Stack>
-      </Stack>
-    </Stack>
-  );
-}

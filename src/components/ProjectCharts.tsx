@@ -47,14 +47,37 @@ export default function ProjectCharts({ project }: Props) {
   const chartData = data.length ? data : [{ key: "empty", name: "No costs", value: 1 }];
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
+  // Bigger on mobile, but keep room for inside labels
   const outerRadius = isSmDown ? "82%" : "76%";
 
-  const labelRenderer = (entry: any) => {
-    if (!data.length) return "";
-    const percent = entry.value / total;
-    if (percent < 0.05) return ""; // hide tiny slices (<5%)
+  // Recharts label renderer with inside placement
+  const renderInsideLabel = (props: any) => {
+    if (!data.length) return null;
 
-    return fmtGBP(Number(entry.value));
+    const { cx, cy, midAngle, innerRadius = 0, outerRadius, value } = props;
+
+    const v = Number(value);
+    const pct = total > 0 ? v / total : 0;
+    if (pct < 0.05) return null; // hide tiny slices (<5%)
+
+    // Position text halfway between inner and outer radius
+    const RADIAN = Math.PI / 180;
+    const r = (innerRadius + outerRadius) / 2;
+    const x = cx + r * Math.cos(-midAngle * RADIAN);
+    const y = cy + r * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#fff"
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{ fontWeight: 800, fontSize: isSmDown ? 12 : 14 }}
+      >
+        {fmtGBP(v)}
+      </text>
+    );
   };
 
   return (
@@ -78,13 +101,8 @@ export default function ProjectCharts({ project }: Props) {
               cx="50%"
               cy="50%"
               outerRadius={outerRadius}
-              label={isSmDown ? labelRenderer : (e) => fmtGBP(Number(e.value))}
+              label={isSmDown ? renderInsideLabel : (e) => fmtGBP(Number(e.value))}
               labelLine={false}
-              style={{
-                fontWeight: 700,
-                fontSize: isSmDown ? 12 : 14,
-                fill: "#ffffff"
-              }}
             >
               {chartData.map((entry: any, idx: number) => (
                 <Cell
@@ -98,9 +116,7 @@ export default function ProjectCharts({ project }: Props) {
               ))}
             </Pie>
 
-            {data.length ? (
-              <Tooltip formatter={(v: any) => fmtGBP(Number(v))} />
-            ) : null}
+            {data.length ? <Tooltip formatter={(v: any) => fmtGBP(Number(v))} /> : null}
           </PieChart>
         </ResponsiveContainer>
       </Box>
@@ -124,14 +140,10 @@ export default function ProjectCharts({ project }: Props) {
                   bgcolor: (COLORS as any)[d.key] || "grey.500"
                 }}
               />
-              <Typography sx={{ fontWeight: 800 }}>
-                {d.name}
-              </Typography>
+              <Typography sx={{ fontWeight: 800 }}>{d.name}</Typography>
             </Stack>
 
-            <Typography sx={{ fontWeight: 900 }}>
-              {fmtGBP(d.value)}
-            </Typography>
+            <Typography sx={{ fontWeight: 900 }}>{fmtGBP(d.value)}</Typography>
           </Stack>
         ))}
 

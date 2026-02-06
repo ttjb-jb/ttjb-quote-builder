@@ -47,12 +47,15 @@ export default function ProjectCharts({ project }: Props) {
   const chartData = data.length ? data : [{ key: "empty", name: "No costs", value: 1 }];
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
-  // Smaller radius on mobile gives labels more room
-  const outerRadius = isSmDown ? "62%" : "76%";
+  const outerRadius = isSmDown ? "82%" : "76%";
 
-  const chartMargin = isSmDown
-    ? { top: 18, right: 46, bottom: 18, left: 46 }
-    : { top: 14, right: 22, bottom: 14, left: 22 };
+  const labelRenderer = (entry: any) => {
+    if (!data.length) return "";
+    const percent = entry.value / total;
+    if (percent < 0.05) return ""; // hide tiny slices (<5%)
+
+    return fmtGBP(Number(entry.value));
+  };
 
   return (
     <Stack spacing={2} sx={{ width: "100%", minWidth: 0 }}>
@@ -60,19 +63,14 @@ export default function ProjectCharts({ project }: Props) {
       <Box
         sx={{
           width: "100%",
-          minWidth: 0,
-          // Give ResponsiveContainer a stable height (aspectRatio alone can be flaky)
-          height: { xs: 320, sm: 380 },
+          height: { xs: 340, sm: 380 },
           maxHeight: 420,
-
-          // IMPORTANT: allow labels outside the chart box
           overflow: "visible",
-          "& .recharts-wrapper": { overflow: "visible" },
           "& svg": { overflow: "visible" }
         }}
       >
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart margin={chartMargin}>
+          <PieChart>
             <Pie
               data={chartData}
               dataKey="value"
@@ -80,18 +78,29 @@ export default function ProjectCharts({ project }: Props) {
               cx="50%"
               cy="50%"
               outerRadius={outerRadius}
+              label={isSmDown ? labelRenderer : (e) => fmtGBP(Number(e.value))}
               labelLine={false}
-              label={({ value }) => (data.length ? fmtGBP(Number(value)) : "")}
+              style={{
+                fontWeight: 700,
+                fontSize: isSmDown ? 12 : 14,
+                fill: "#ffffff"
+              }}
             >
               {chartData.map((entry: any, idx: number) => (
                 <Cell
                   key={`${entry.key}-${idx}`}
-                  fill={entry.key === "empty" ? "#9CA3AF" : (COLORS as any)[entry.key] || "#94A3B8"}
+                  fill={
+                    entry.key === "empty"
+                      ? "#9CA3AF"
+                      : (COLORS as any)[entry.key] || "#94A3B8"
+                  }
                 />
               ))}
             </Pie>
 
-            {data.length ? <Tooltip formatter={(v: any) => fmtGBP(Number(v))} /> : null}
+            {data.length ? (
+              <Tooltip formatter={(v: any) => fmtGBP(Number(v))} />
+            ) : null}
           </PieChart>
         </ResponsiveContainer>
       </Box>
@@ -106,22 +115,21 @@ export default function ProjectCharts({ project }: Props) {
             justifyContent="space-between"
             sx={{ width: "100%", minWidth: 0 }}
           >
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
               <Box
                 sx={{
                   width: 12,
                   height: 12,
                   borderRadius: "50%",
-                  bgcolor: (COLORS as any)[d.key] || "grey.500",
-                  flex: "0 0 auto"
+                  bgcolor: (COLORS as any)[d.key] || "grey.500"
                 }}
               />
-              <Typography sx={{ fontWeight: 800 }} noWrap>
+              <Typography sx={{ fontWeight: 800 }}>
                 {d.name}
               </Typography>
             </Stack>
 
-            <Typography sx={{ fontWeight: 900, flex: "0 0 auto" }}>
+            <Typography sx={{ fontWeight: 900 }}>
               {fmtGBP(d.value)}
             </Typography>
           </Stack>

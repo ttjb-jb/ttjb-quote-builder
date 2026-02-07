@@ -66,7 +66,7 @@ export default function DrawerMenu({ children }: { children: ReactNode }) {
         }}
       >
         <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
-          TTJB Quote Builder
+          3D Print Calculator
         </Typography>
       </Toolbar>
 
